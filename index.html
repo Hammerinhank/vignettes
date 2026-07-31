@@ -138,6 +138,18 @@
   .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; padding: 6px 10px 10px; }
   .entete-date { grid-column: 1 / -1; font-size: 12px; font-weight: 700; color: var(--text);
     background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; margin-top: 4px; text-transform: capitalize; }
+
+  /* Arborescence de dossiers (analyse locale) */
+  .arbre { font-size: 13px; }
+  .arbre details { margin: 1px 0; }
+  .arbre summary { cursor: pointer; padding: 3px 6px; border-radius: 5px; list-style: none; user-select: none; }
+  .arbre summary::-webkit-details-marker { display: none; }
+  .arbre summary:hover { background: var(--panel-hover); }
+  .arbre .chevron { display: inline-block; width: 1em; color: var(--text-dim); transition: transform .12s; }
+  .arbre details[open] > summary > .chevron { transform: rotate(90deg); }
+  .arbre .nb { color: var(--vert); font-weight: 700; }
+  .arbre .feuille { padding: 3px 6px; color: var(--text); }
+  .arbre-niveau { margin-left: 12px; border-left: 1px solid var(--border); padding-left: 8px; }
   .carte { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 2px; position: relative; }
   .carte.plus { border: 3px solid var(--vert); }
   .carte.moins { border: 3px solid var(--accent); }
@@ -254,6 +266,8 @@
           <input type="text" id="texte-album" maxlength="40" placeholder="(aucun)" oninput="publierTexteAlbum()" style="width:220px;"></label>
         <button class="btn" onclick="basculerToutVoir()" id="btn-tout-voir">👁️ Tout déplier</button>
         <button class="btn" onclick="basculerToutesPhotos()" id="btn-tout-photos" title="Affiche toutes les photos, toutes années et tous mois confondus, par tranches de 100 (avec un bouton pour charger les suivantes). Les filtres restent actifs.">🌐 Voir toutes les photos</button>
+        <button class="btn" onclick="document.getElementById('scan-dossier').click()" title="Choisis un dossier de ton ordinateur : l'application affiche l'arborescence de ses sous-dossiers et le nombre de photos dans chacun. Fonction d'ordinateur (Safari/Chrome) — non disponible sur iPhone. Aucune image n'est envoyée nulle part : l'analyse est purement locale.">📂 Analyser un dossier…</button>
+        <input type="file" id="scan-dossier" webkitdirectory directory multiple style="display:none" onchange="analyserDossier(this.files); this.value='';">
         <button class="btn" onclick="document.getElementById('fichier-import').click()" title="Ajoute des images comme vignettes normales (marquage, filtres, séries…). Date de prise de vue lue dans l'EXIF si présente, sinon date du fichier. Conservées dans ce navigateur (elles réapparaissent après un rechargement) ; effaçables depuis l'onglet ⚙️ Réglages.">🖼️ Importer des images…</button>
         <input type="file" id="fichier-import" accept="image/*" multiple style="display:none" onchange="importerFichiers(this.files); this.value='';">
       </div>
@@ -385,7 +399,7 @@
 <div id="drop-overlay"><div class="boite">Déposez vos images ici</div></div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.6</span>
+  <span class="version">version autonome 2026-07-30.7</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -434,7 +448,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.6";
+const VERSION = "2026-07-30.7";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -676,6 +690,53 @@ async function importerFichiers(fileList) {
   etatSync(files.length + " image(s) importée(s) — conservées dans ce navigateur", "ok");
   if (CONFIG.repo && TOKEN) sauverImporteesSurGithub(true);   // sécurise sur le dépôt (silencieux)
 }
+
+/* ---- Analyse d'un dossier local : arborescence + nombre de photos ---- */
+const RE_PHOTO = /\.(jpe?g|png|gif|webp|bmp|tiff?|heic|heif|avif|cr2|cr3|nef|arw|dng|raf|orf|rw2|sr2|pef|srw)$/i;
+function analyserDossier(fileList) {
+  const files = [...fileList];
+  if (!files.length) return;
+  const racineNom = (files[0].webkitRelativePath || files[0].name).split("/")[0] || "Dossier";
+  const racine = { nom: racineNom, enfants: new Map(), nbDirect: 0, nbTotal: 0 };
+  let nbPhotos = 0;
+  for (const f of files) {
+    const chemin = (f.webkitRelativePath || f.name).split("/");
+    const estPhoto = RE_PHOTO.test(f.name);
+    if (estPhoto) { nbPhotos++; racine.nbTotal++; }
+    let node = racine;
+    for (let i = 1; i < chemin.length - 1; i++) {
+      const seg = chemin[i];
+      if (!node.enfants.has(seg)) node.enfants.set(seg, { nom: seg, enfants: new Map(), nbDirect: 0, nbTotal: 0 });
+      node = node.enfants.get(seg);
+      if (estPhoto) node.nbTotal++;
+    }
+    if (estPhoto) node.nbDirect++;
+  }
+  afficherArbre(racine, nbPhotos, files.length);
+}
+function noeudArbreHtml(node, ouvert) {
+  const enfants = [...node.enfants.values()].filter(e => e.nbTotal > 0).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+  const direct = node.nbDirect ? ` <span style="color:var(--text-dim);font-weight:400;">· ${node.nbDirect.toLocaleString("fr-FR")} ici</span>` : "";
+  const tete = `📁 ${esc(node.nom)} <span class="nb">${node.nbTotal.toLocaleString("fr-FR")}</span>${direct}`;
+  if (enfants.length) {
+    return `<details${ouvert ? " open" : ""}><summary><span class="chevron">▸</span> ${tete}</summary><div class="arbre-niveau">${enfants.map(e => noeudArbreHtml(e, false)).join("")}</div></details>`;
+  }
+  return `<div class="feuille"><span class="chevron" style="visibility:hidden">▸</span> ${tete}</div>`;
+}
+function afficherArbre(racine, nbPhotos, nbFichiers) {
+  const c = document.getElementById("contenu");
+  if (!nbPhotos) {
+    c.innerHTML = `<div style="margin-bottom:10px;"><button class="btn" onclick="revenirAuxVignettes()">← Revenir aux vignettes</button></div><p style="font-size:12px;color:var(--text-dim);">Aucune photo trouvée dans « ${esc(racine.nom)} » (${nbFichiers.toLocaleString("fr-FR")} fichier(s) analysés).</p>`;
+    c.scrollTop = 0; return;
+  }
+  c.innerHTML = `<div style="margin-bottom:10px;">
+      <button class="btn" onclick="revenirAuxVignettes()">← Revenir aux vignettes</button>
+      <div style="margin-top:8px;font-size:13px;">Analyse de « ${esc(racine.nom)} » — <span class="nb">${nbPhotos.toLocaleString("fr-FR")}</span> photo(s) sur ${nbFichiers.toLocaleString("fr-FR")} fichier(s). Chaque dossier indique le total de son sous-arbre, et « · N ici » les photos qu'il contient directement.</div>
+    </div>
+    <div class="arbre">${noeudArbreHtml(racine, true)}</div>`;
+  c.scrollTop = 0;
+}
+function revenirAuxVignettes() { if (modeTout) rafraichirTout(); else rafraichir(); }
 
 // Glisser-déposer sur toute la fenêtre.
 let _dragCompteur = 0;
