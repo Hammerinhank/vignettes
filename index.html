@@ -470,7 +470,7 @@
 </div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.18</span>
+  <span class="version">version autonome 2026-07-30.19</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -505,7 +505,10 @@
   <div class="boite-meta">
     <h3>Métadonnées de la vignette</h3>
     <table id="meta-table"></table>
-    <div style="text-align:right;margin-top:12px;"><button class="btn" onclick="fermerMeta()">Fermer</button></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:8px;">
+      <button class="btn" style="background:#5a1e1e;border-color:#7a2a2a;color:#ffd7d7;" onclick="supprimerVignetteMeta()">🗑️ Supprimer définitivement</button>
+      <button class="btn" onclick="fermerMeta()">Fermer</button>
+    </div>
   </div>
 </div>
 
@@ -520,7 +523,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.18";
+const VERSION = "2026-07-30.19";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -768,6 +771,7 @@ async function importerFichiers(fileList) {
     progression(true, `Import des images : ${i + 1} / ${files.length}`, (i + 1) / files.length);
   }
   MANIFEST = [...parUuid.values()];
+  if (DATA.supprimees && DATA.supprimees.length) { const ajoutes = new Set(parUuid.keys()); DATA.supprimees = DATA.supprimees.filter(u => !ajoutes.has(u)); }
   indexerParMois();
   if (dernier && dernier.annee) {
     const selA = document.getElementById("sel-annee");
@@ -1114,7 +1118,7 @@ function majEtatSync() {
   if (!CONFIG.repo || !TOKEN) etatSync("Marques locales (pas de synchro)", "");
   else etatSync("Synchronisé avec le dépôt", "ok");
 }
-function chargerDonneesLocales() { try { DATA = Object.assign({ marques: {}, textesAlbums: {} }, JSON.parse(localStorage.getItem(K_DATA)) || {}); } catch (e) {} }
+function chargerDonneesLocales() { try { DATA = Object.assign({ marques: {}, textesAlbums: {}, supprimees: [] }, JSON.parse(localStorage.getItem(K_DATA)) || {}); } catch (e) {} if (!Array.isArray(DATA.supprimees)) DATA.supprimees = []; }
 function sauverDonneesLocales() { try { localStorage.setItem(K_DATA, JSON.stringify(DATA)); } catch (e) {} }
 
 function apiGithub(path) { return `https://api.github.com/repos/${CONFIG.repo}/contents/${path}?ref=${encodeURIComponent(CONFIG.branche)}`; }
@@ -1129,7 +1133,8 @@ async function chargerDonneesDepuisGithub(verbeux) {
     const j = await res.json();
     githubSha = j.sha;
     const contenu = JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g, "")))));
-    DATA = Object.assign({ marques: {}, textesAlbums: {} }, { marques: contenu.marques || {}, textesAlbums: contenu.textesAlbums || {} });
+    const supFus = [...new Set([...(DATA.supprimees || []), ...((contenu.supprimees) || [])])];
+    DATA = Object.assign({ marques: {}, textesAlbums: {}, supprimees: [] }, { marques: contenu.marques || {}, textesAlbums: contenu.textesAlbums || {}, supprimees: supFus });
     sauverDonneesLocales();
     // État de travail distant → graine du localStorage (appliqué par la suite).
     if (contenu.etat) { try { const local = JSON.parse(localStorage.getItem(K_ETAT)) || {}; localStorage.setItem(K_ETAT, JSON.stringify(Object.assign({}, local, contenu.etat))); } catch (e) {} }
@@ -1148,10 +1153,10 @@ function planifierSauvegarde() {
 
 async function pousserDonneesVersGithub() {
   if (!CONFIG.repo || !TOKEN) return;
-  const noyau = JSON.stringify({ marques: DATA.marques, textesAlbums: DATA.textesAlbums, etat: etatPourSync() });
+  const noyau = JSON.stringify({ marques: DATA.marques, textesAlbums: DATA.textesAlbums, supprimees: DATA.supprimees || [], etat: etatPourSync() });
   if (noyau === _dernierPayload) { majEtatSync(); return; }   // rien de neuf : pas de commit
   etatSync("Enregistrement…", "");
-  const objet = { marques: DATA.marques || {}, textesAlbums: DATA.textesAlbums || {}, etat: etatPourSync(), maj: new Date().toISOString() };
+  const objet = { marques: DATA.marques || {}, textesAlbums: DATA.textesAlbums || {}, supprimees: DATA.supprimees || [], etat: etatPourSync(), maj: new Date().toISOString() };
   const corps = {
     message: "Mise à jour du contexte du tri (" + new Date().toISOString() + ")",
     content: btoa(unescape(encodeURIComponent(JSON.stringify(objet, null, 2)))),
@@ -1734,8 +1739,10 @@ function basculerPleinZoom() {
 }
 function fermerZoom() { const o = document.getElementById("overlay-zoom"); o.classList.remove("ouvert"); o.classList.remove("plein"); zoomPlein = false; document.getElementById("zoom-plein").textContent = "⤢"; }
 
+let _metaUuid = null;
 function afficherMetadonnees(uuid) {
   const v = vignetteParUuid(uuid); if (!v) return;
+  _metaUuid = uuid;
   const mk = DATA.marques[uuid] || "aucune";
   const lignes = [
     ["Fichier", esc(v.fichier)],
@@ -1753,6 +1760,39 @@ function afficherMetadonnees(uuid) {
   document.getElementById("overlay-meta").classList.add("ouvert");
 }
 function fermerMeta() { document.getElementById("overlay-meta").classList.remove("ouvert"); }
+
+// Suppression définitive d'une vignette : liste, marque, IndexedDB, dépôt GitHub,
+// et inscription dans DATA.supprimees pour qu'elle ne réapparaisse pas au rechargement.
+function supprimerVignetteMeta() { if (_metaUuid) supprimerVignette(_metaUuid); }
+async function supprimerImporteeIndexedDB(uuid) { const db = await ouvrirDB(); return new Promise((res, rej) => { const tx = db.transaction("importees", "readwrite"); tx.objectStore("importees").delete(uuid); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+async function supprimerFichierGithub(chemin) {
+  const r = await fetch(apiGithub(chemin), { headers: entetesGithub(), cache: "no-store" });
+  if (!r.ok) return; const j = await r.json();
+  await fetch(`https://api.github.com/repos/${CONFIG.repo}/contents/${chemin}`, { method: "DELETE", headers: Object.assign(entetesGithub(), { "Content-Type": "application/json" }), body: JSON.stringify({ message: "Suppression image importée", sha: j.sha, branch: CONFIG.branche }) });
+}
+async function supprimerImporteeGithub(uuid) {
+  let manif = null; try { manif = await lireJsonGithub(cheminManifImportees()); } catch (e) { return; }
+  if (!manif || !manif.vignettes) return;
+  const entry = manif.vignettes.find(e => e.uuid === uuid); if (!entry) return;
+  try { await supprimerFichierGithub(entry.fichier); } catch (e) {}
+  manif.vignettes = manif.vignettes.filter(e => e.uuid !== uuid);
+  try { await ecrireFichierGithub(cheminManifImportees(), { vignettes: manif.vignettes, maj: new Date().toISOString() }, "Suppression vignette importée " + uuid); } catch (e) {}
+}
+async function supprimerVignette(uuid) {
+  if (!confirm("Supprimer définitivement cette vignette ?\n\nToute trace sera effacée : la vignette, sa marque, son image importée (ce navigateur et le dépôt GitHub s'il est configuré). Cette action est irréversible.")) return;
+  if (!Array.isArray(DATA.supprimees)) DATA.supprimees = [];
+  if (!DATA.supprimees.includes(uuid)) DATA.supprimees.push(uuid);
+  delete DATA.marques[uuid];
+  MANIFEST = MANIFEST.filter(x => x.uuid !== uuid);
+  indexerParMois();
+  fermerMeta();
+  if (modeTout) rafraichirTout(); else rafraichir();
+  etatSync("Suppression en cours…", "");
+  try { await supprimerImporteeIndexedDB(uuid); } catch (e) {}
+  if (CONFIG.repo && TOKEN) { try { await supprimerImporteeGithub(uuid); } catch (e) {} }
+  planifierSauvegarde();                 // pousse marques + supprimées (+ état) et sauve en local
+  etatSync("Vignette supprimée définitivement", "ok");
+}
 
 document.addEventListener("keydown", e => {
   if (document.getElementById("overlay-zoom").classList.contains("ouvert")) {
@@ -1820,6 +1860,7 @@ async function demarrer() {
   indexerParMois();
   if (CONFIG.repo && TOKEN) progression(true, "Synchronisation des marques…", null);
   await chargerDonneesDepuisGithub(false);
+  if (DATA.supprimees && DATA.supprimees.length) { const s = new Set(DATA.supprimees); MANIFEST = MANIFEST.filter(v => !s.has(v.uuid)); indexerParMois(); }
   restaurerChampsDepuisEtat();
   peuplerSelecteurs();
   rafraichir();
