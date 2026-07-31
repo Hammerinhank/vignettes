@@ -11,8 +11,8 @@
   },
   "textesAlbums": {},
   "etat": {
-    "annee": 2000,
-    "mois": 5,
+    "annee": 1999,
+    "mois": 8,
     "marque": "toutes",
     "personne": "",
     "critere1": "",
@@ -25,5 +25,5 @@
     "seriesEcart": 10,
     "toutVoir": false
   },
-  "maj": "2026-07-31T12:20:23.627Z"
+  "maj": "2026-07-31T12:50:24.958Z"
 }
