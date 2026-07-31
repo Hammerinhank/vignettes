@@ -7,7 +7,7 @@
   "textesAlbums": {},
   "etat": {
     "annee": 2026,
-    "mois": null,
+    "mois": 7,
     "marque": "toutes",
     "personne": "",
     "critere1": "",
@@ -20,5 +20,5 @@
     "seriesEcart": 10,
     "toutVoir": false
   },
-  "maj": "2026-07-31T09:24:26.666Z"
+  "maj": "2026-07-31T09:26:37.546Z"
 }
