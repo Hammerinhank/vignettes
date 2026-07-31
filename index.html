@@ -341,12 +341,13 @@
       <div class="champs" style="margin-top:12px;">
         <button class="btn" onclick="enregistrerReglages()">💾 Enregistrer</button>
         <button class="btn" onclick="testerAcces()">🔌 Tester l'accès</button>
-        <button class="btn" onclick="chargerDonneesDepuisGithub(true)">⤓ Recharger les marques du dépôt</button>
+        <button class="btn" onclick="rechargerContexte()">⤓ Recharger le contexte du dépôt</button>
+        <button class="btn" onclick="sauverImporteesSurGithub(false)">☁️ Sauvegarder les images importées sur le dépôt</button>
         <button class="btn" onclick="effacerToken()">🗑️ Oublier le jeton</button>
         <button class="btn" onclick="effacerVignettesImportees()">🗑️ Effacer les vignettes importées</button>
       </div>
       <div id="msg-reglages" class="msg"></div>
-      <p class="aide">Le jeton reste dans le <code class="snip">localStorage</code> de ce navigateur uniquement — il n'est jamais publié ni transmis ailleurs qu'à l'API GitHub. Sans jeton, l'application fonctionne en lecture seule et mémorise tes marques localement (elles ne seront pas synchronisées entre appareils).</p>
+      <p class="aide">Le jeton reste dans le <code class="snip">localStorage</code> de ce navigateur uniquement — il n'est jamais publié ni transmis ailleurs qu'à l'API GitHub. Sans jeton, l'application fonctionne en local (marques et images importées mémorisées dans ce navigateur), sans synchronisation entre appareils. Avec un dépôt et un jeton, tout le contexte est <strong>sécurisé en parallèle dans des fichiers du dépôt</strong> : marques et textes d'album + état de travail (mois, filtres) dans <code class="snip">tri-marques.json</code>, et les images importées (fichier + métadonnées) dans <code class="snip">vignettes-importees/</code> et <code class="snip">vignettes-importees.json</code> — de quoi tout retrouver depuis un autre appareil.</p>
       <details style="margin-top:10px;">
         <summary style="cursor:pointer;font-size:12px;color:var(--text-dim);">Format attendu du manifeste</summary>
         <pre class="exemple">{
@@ -384,7 +385,7 @@
 <div id="drop-overlay"><div class="boite">Déposez vos images ici</div></div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.5</span>
+  <span class="version">version autonome 2026-07-30.6</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -433,7 +434,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.5";
+const VERSION = "2026-07-30.6";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -673,6 +674,7 @@ async function importerFichiers(fileList) {
   activerOnglet("mois");
   rafraichir();
   etatSync(files.length + " image(s) importée(s) — conservées dans ce navigateur", "ok");
+  if (CONFIG.repo && TOKEN) sauverImporteesSurGithub(true);   // sécurise sur le dépôt (silencieux)
 }
 
 // Glisser-déposer sur toute la fenêtre.
@@ -747,27 +749,32 @@ async function chargerDonneesDepuisGithub(verbeux) {
     const j = await res.json();
     githubSha = j.sha;
     const contenu = JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g, "")))));
-    DATA = Object.assign({ marques: {}, textesAlbums: {} }, contenu);
+    DATA = Object.assign({ marques: {}, textesAlbums: {} }, { marques: contenu.marques || {}, textesAlbums: contenu.textesAlbums || {} });
     sauverDonneesLocales();
+    // État de travail distant → graine du localStorage (appliqué par la suite).
+    if (contenu.etat) { try { const local = JSON.parse(localStorage.getItem(K_ETAT)) || {}; localStorage.setItem(K_ETAT, JSON.stringify(Object.assign({}, local, contenu.etat))); } catch (e) {} }
     majEtatSync();
-    if (verbeux) msgReglages("Marques rechargées depuis le dépôt.", "ok");
-    if (MANIFEST.length) rafraichir();
+    if (verbeux) msgReglages("Contexte rechargé depuis le dépôt.", "ok");
+    if (verbeux && MANIFEST.length) { restaurerChampsDepuisEtat(); peuplerSelecteurs(); if (modeTout) rafraichirTout(); else rafraichir(); }
   } catch (e) { majEtatSync(); if (verbeux) msgReglages("Lecture GitHub impossible : " + e.message, "err"); }
 }
 
 function planifierSauvegarde() {
   sauverDonneesLocales();
-  if (!CONFIG.repo || !TOKEN) return;
+  if (_suppressionPush || !CONFIG.repo || !TOKEN) return;
   clearTimeout(sauveDiffere);
-  sauveDiffere = setTimeout(pousserDonneesVersGithub, 800);
+  sauveDiffere = setTimeout(pousserDonneesVersGithub, 1200);
 }
 
 async function pousserDonneesVersGithub() {
   if (!CONFIG.repo || !TOKEN) return;
+  const noyau = JSON.stringify({ marques: DATA.marques, textesAlbums: DATA.textesAlbums, etat: etatPourSync() });
+  if (noyau === _dernierPayload) { majEtatSync(); return; }   // rien de neuf : pas de commit
   etatSync("Enregistrement…", "");
+  const objet = { marques: DATA.marques || {}, textesAlbums: DATA.textesAlbums || {}, etat: etatPourSync(), maj: new Date().toISOString() };
   const corps = {
-    message: "Mise à jour des marques du tri (" + new Date().toISOString() + ")",
-    content: btoa(unescape(encodeURIComponent(JSON.stringify(Object.assign({}, DATA, { maj: new Date().toISOString() }), null, 2)))),
+    message: "Mise à jour du contexte du tri (" + new Date().toISOString() + ")",
+    content: btoa(unescape(encodeURIComponent(JSON.stringify(objet, null, 2)))),
     branch: CONFIG.branche
   };
   if (githubSha) corps.sha = githubSha;
@@ -779,11 +786,106 @@ async function pousserDonneesVersGithub() {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const j = await res.json();
     githubSha = j.content ? j.content.sha : githubSha;
+    _dernierPayload = noyau;
     majEtatSync();
   } catch (e) { etatSync("Échec d'enregistrement : " + e.message, "err"); }
 }
 async function chargerShaCourant() {
   try { const r = await fetch(apiGithub(CONFIG.datapath), { headers: entetesGithub(), cache: "no-store" }); if (r.ok) { const j = await r.json(); githubSha = j.sha; } } catch (e) {}
+}
+
+/* ---- Fichiers GitHub génériques + contexte étendu (état UI + images) ---- */
+let _suppressionPush = false;   // évite de re-pousser l'état qu'on vient de tirer
+let _dernierPayload = null;     // dédoublonne les commits identiques
+function dossierData() { const p = CONFIG.datapath || "data/tri-marques.json"; const i = p.lastIndexOf("/"); return i >= 0 ? p.slice(0, i + 1) : ""; }
+function cheminManifImportees() { return dossierData() + "vignettes-importees.json"; }
+function extImage(nom, type) { const m = (nom || "").match(/\.([a-z0-9]+)$/i); if (m) return m[1].toLowerCase(); if (/jpe?g/.test(type || "")) return "jpg"; if (/png/.test(type || "")) return "png"; if (/webp/.test(type || "")) return "webp"; if (/gif/.test(type || "")) return "gif"; return "img"; }
+function cheminImageImportee(uuid, nom, type) { return dossierData() + "vignettes-importees/" + uuid.replace(/[^a-zA-Z0-9._-]/g, "_") + "." + extImage(nom, type); }
+function blobEnBase64(blob) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = () => rej(r.error); r.readAsDataURL(blob); }); }
+async function lireJsonGithub(chemin) {
+  const r = await fetch(apiGithub(chemin), { headers: entetesGithub(), cache: "no-store" });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const j = await r.json();
+  return JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g, "")))));
+}
+async function lireBlobGithub(chemin) {
+  const r = await fetch(apiGithub(chemin), { headers: entetesGithub(), cache: "no-store" });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const j = await r.json();
+  const bin = atob(j.content.replace(/\n/g, "")); const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr]);
+}
+async function ecrireContenuGithub(chemin, base64, message) {
+  let sha = null;
+  try { const r = await fetch(apiGithub(chemin), { headers: entetesGithub(), cache: "no-store" }); if (r.ok) sha = (await r.json()).sha; } catch (e) {}
+  const corps = { message, content: base64, branch: CONFIG.branche }; if (sha) corps.sha = sha;
+  const res = await fetch(`https://api.github.com/repos/${CONFIG.repo}/contents/${chemin}`, { method: "PUT", headers: Object.assign(entetesGithub(), { "Content-Type": "application/json" }), body: JSON.stringify(corps) });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+}
+// État de travail à synchroniser (on exclut le dépliage des jours, trop volatil).
+function etatPourSync() {
+  let e = null; try { e = JSON.parse(localStorage.getItem(K_ETAT)); } catch (x) {}
+  if (!e) return null;
+  const { joursDeplies, ...reste } = e;
+  return reste;
+}
+
+/* ---- Sauvegarde / récupération des VIGNETTES IMPORTÉES sur GitHub ----
+   Le fichier image est écrit dans dossierData()/vignettes-importees/, et un
+   manifeste dossierData()/vignettes-importees.json liste tout (uuid, chemin,
+   date, métadonnées) pour que d'autres appareils les retrouvent. */
+async function sauverImporteesSurGithub(silencieux) {
+  if (!CONFIG.repo || !TOKEN) { if (!silencieux) msgReglages("Dépôt ou jeton manquant.", "err"); return; }
+  let recs = []; try { recs = await lireImportees(); } catch (e) {}
+  if (!recs.length) { if (!silencieux) msgReglages("Aucune vignette importée à sauvegarder.", "ok"); return; }
+  const prog = document.getElementById("progression"), barre = prog.querySelector(".pbarre > div"), txt = prog.querySelector(".ptexte");
+  prog.style.display = "block";
+  let manif = null; try { manif = await lireJsonGithub(cheminManifImportees()); } catch (e) {}
+  const dejaPar = new Map((manif && manif.vignettes ? manif.vignettes : []).map(v => [v.uuid, v]));
+  let ajout = 0;
+  for (let i = 0; i < recs.length; i++) {
+    const r = recs[i];
+    txt.textContent = `Sauvegarde des vignettes importées ${i + 1}/${recs.length}`; barre.style.width = (100 * (i + 1) / recs.length) + "%";
+    if (dejaPar.has(r.uuid)) continue;
+    const chemin = cheminImageImportee(r.uuid, r.nom, r.blob && r.blob.type);
+    try {
+      await ecrireContenuGithub(chemin, await blobEnBase64(r.blob), "Ajout vignette importée " + r.nom);
+      dejaPar.set(r.uuid, { uuid: r.uuid, fichier: chemin, datetime: r.datetime, personnes: r.personnes || [], score: (typeof r.score === "number" ? r.score : null), scores_detail: r.scores_detail || {} });
+      ajout++;
+    } catch (e) {}
+  }
+  try { await ecrireFichierGithub(cheminManifImportees(), { vignettes: [...dejaPar.values()], maj: new Date().toISOString() }, "MAJ manifeste vignettes importées"); } catch (e) {}
+  setTimeout(() => { prog.style.display = "none"; barre.style.width = "0%"; }, 600);
+  if (!silencieux) msgReglages(ajout + " nouvelle(s) vignette(s) importée(s) sauvegardée(s) sur le dépôt (" + dejaPar.size + " au total).", "ok");
+  etatSync("Vignettes importées sécurisées sur le dépôt", "ok");
+}
+
+async function chargerImporteesDepuisGithub() {
+  if (!CONFIG.repo || !TOKEN) return 0;
+  let manif = null; try { manif = await lireJsonGithub(cheminManifImportees()); } catch (e) { return 0; }
+  if (!manif || !manif.vignettes || !manif.vignettes.length) return 0;
+  const parUuid = new Map(MANIFEST.map(v => [v.uuid, v]));
+  let n = 0;
+  for (const e of manif.vignettes) {
+    if (parUuid.has(e.uuid)) continue;   // déjà présente (IndexedDB local)
+    let blob; try { blob = await lireBlobGithub(e.fichier); } catch (err) { continue; }
+    try { await sauverImportee({ uuid: e.uuid, nom: e.fichier.split("/").pop(), taille: blob.size, datetime: e.datetime, blob, personnes: e.personnes || [], score: e.score, scores_detail: e.scores_detail || {} }); } catch (_) {}
+    const v = enrichirVignette({ uuid: e.uuid, fichier: URL.createObjectURL(blob), datetime: e.datetime, personnes: e.personnes || [], score: (typeof e.score === "number" ? e.score : null), scores_detail: e.scores_detail || {}, _local: true });
+    if (v) { parUuid.set(v.uuid, v); n++; }
+  }
+  MANIFEST = [...parUuid.values()];
+  return n;
+}
+
+async function rechargerContexte() {
+  await chargerDonneesDepuisGithub(true);
+  let n = 0; try { n = await chargerImporteesDepuisGithub(); } catch (e) {}
+  indexerParMois();
+  restaurerChampsDepuisEtat(); peuplerSelecteurs();
+  if (modeTout) rafraichirTout(); else rafraichir();
+  msgReglages("Contexte rechargé depuis le dépôt" + (n ? " (+" + n + " vignette(s) importée(s))" : "") + ".", "ok");
 }
 
 async function testerAcces() {
@@ -1291,6 +1393,7 @@ function sauvegarderEtat() {
       joursDeplies: [...joursDeplies], toutVoir: modeToutVoir
     }));
   } catch (e) {}
+  planifierSauvegarde();   // pousse aussi l'état de travail vers le dépôt (dédupliqué)
 }
 function chargerEtat() { try { return JSON.parse(localStorage.getItem(K_ETAT)) || null; } catch (e) { return null; } }
 function restaurerChampsDepuisEtat() {
@@ -1311,20 +1414,23 @@ function restaurerOnglet() { let o = "mois"; try { o = localStorage.getItem(K_ON
    DÉMARRAGE
    ========================================================================= */
 async function demarrer() {
+  _suppressionPush = true;
   majEtatSync();
   const nbImportees = await chargerVignettesImportees();
   if (CONFIG.manifest) await chargerManifeste();
+  try { await chargerImporteesDepuisGithub(); } catch (e) {}
   // Ni manifeste, ni images importées : on guide vers les réglages.
   if (!CONFIG.manifest && MANIFEST.length === 0) {
     activerOnglet("reglages");
     document.getElementById("contenu").innerHTML = `<p style="font-size:12px;color:var(--text-dim);">Glisse-dépose des images dans la fenêtre pour commencer, ou configure une source dans l'onglet ⚙️ Réglages.</p>`;
-    return;
+    _suppressionPush = false; return;
   }
   indexerParMois();
   await chargerDonneesDepuisGithub(false);
   restaurerChampsDepuisEtat();
   peuplerSelecteurs();
   rafraichir();
+  _suppressionPush = false;
   if (nbImportees) etatSync(nbImportees + " vignette(s) importée(s) restaurée(s)", "ok");
 }
 
