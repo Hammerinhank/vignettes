@@ -153,6 +153,7 @@
   .arbre .feuille { padding: 3px 6px; color: var(--text); }
   .arbre-niveau { margin-left: 12px; border-left: 1px solid var(--border); padding-left: 8px; }
   .arbre .cb-dossier { width: auto; margin: 0 4px 0 0; vertical-align: middle; cursor: pointer; }
+  .arbre .nom-dossier.parent-coche { color: #ffd23f; font-weight: 700; }
   /* Bloc « analyse en cours » : affiché tout de suite, bien visible. */
   .analyse-encours { display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 14px; padding: 44px 16px; text-align: center; color: var(--text); }
@@ -469,7 +470,7 @@
 </div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.16</span>
+  <span class="version">version autonome 2026-07-30.17</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -519,7 +520,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.16";
+const VERSION = "2026-07-30.17";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -869,7 +870,7 @@ function noeudArbreHtml(node, ouvert) {
   const enfants = [...node.enfants.values()].filter(e => e.nbTotal > 0).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   const direct = node.nbDirect ? ` <span style="color:var(--text-dim);font-weight:400;">· ${node.nbDirect.toLocaleString("fr-FR")} ici</span>` : "";
   const cb = `<input type="checkbox" class="cb-dossier" data-id="${node.id}" data-direct="${node.nbDirect}"${_dossiersCoches.has(node.id) ? " checked" : ""} onclick="event.stopPropagation()" onchange="cascadeCoche(this, ${enfants.length > 0})" title="Cocher pour importer les photos de ce dossier${enfants.length ? " et de ses sous-dossiers" : ""}">`;
-  const tete = `${cb}📁 ${esc(node.nom)} <span class="nb">${node.nbTotal.toLocaleString("fr-FR")}</span>${direct}`;
+  const tete = `${cb}<span class="nom-dossier" data-id="${node.id}">📁 ${esc(node.nom)}</span> <span class="nb">${node.nbTotal.toLocaleString("fr-FR")}</span>${direct}`;
   if (enfants.length) {
     return `<details${ouvert ? " open" : ""}><summary><span class="chevron">▸</span> ${tete}</summary><div class="arbre-niveau">${enfants.map(e => noeudArbreHtml(e, false)).join("")}</div></details>`;
   }
@@ -889,8 +890,19 @@ function afficherArbre(racine, nbPhotos, nbFichiers) {
     </div>
     <div class="arbre">${noeudArbreHtml(racine, true)}</div>`;
   c.scrollTop = 0;
+  majSurlignageParents(racine);
 }
 function revenirAuxVignettes() { if (modeTout) rafraichirTout(); else rafraichir(); }
+// Met en jaune le nom des dossiers PARENTS de tout dossier coché (remontée
+// jusqu'à la racine), pour retrouver les branches cochées même repliées.
+function _constrParents(node, parent, map) { map.set(node.id, parent); for (const c of node.enfants.values()) _constrParents(c, node, map); }
+function majSurlignageParents(racine) {
+  racine = racine || (_arbreCourant && _arbreCourant.racine); if (!racine) return;
+  const parents = new Map(); _constrParents(racine, null, parents);
+  const aSurligner = new Set();
+  for (const id of _dossiersCoches) { let par = parents.get(id); while (par) { aSurligner.add(par.id); par = parents.get(par.id); } }
+  document.querySelectorAll(".arbre .nom-dossier[data-id]").forEach(s => s.classList.toggle("parent-coche", aSurligner.has(+s.getAttribute("data-id"))));
+}
 // --- Persistance de la structure de l'arborescence (sans les fichiers) ---
 function _serialiserNoeud(n) { return { i: n.id, n: n.nom, d: n.nbDirect, t: n.nbTotal, e: [...n.enfants.values()].map(_serialiserNoeud) }; }
 function _reconstruireNoeud(s) {
@@ -932,6 +944,7 @@ function cascadeCoche(cb, aDesEnfants) {
   }
   _dossiersCoches = new Set([...document.querySelectorAll(".cb-dossier:checked")].map(x => +x.getAttribute("data-id")));
   sauverCochesArbre();
+  majSurlignageParents();
   majBoutonImport();
 }
 function majBoutonImport() {
