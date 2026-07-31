@@ -161,6 +161,17 @@
   @keyframes tourner { to { transform: rotate(360deg); } }
   .analyse-encours .grand { font-size: 16px; font-weight: 700; }
   .analyse-encours .petit { font-size: 13px; color: var(--text-dim); }
+  /* Fenêtre modale bloquante « Analyse en cours » */
+  #overlay-analyse { z-index: 80; }
+  #overlay-analyse .analyse-modale { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 28px 32px; width: 420px; max-width: 90vw; display: flex; flex-direction: column; align-items: center;
+    gap: 16px; text-align: center; box-shadow: 0 10px 50px rgba(0,0,0,.6); }
+  #overlay-analyse .spin.gros { width: 46px; height: 46px; border-width: 4px; }
+  #overlay-analyse .titre { font-size: 20px; font-weight: 800; color: var(--text); }
+  #overlay-analyse .detail { font-size: 14px; color: var(--text-dim); min-height: 1.2em; }
+  #overlay-analyse .pbarre-modale { width: 100%; height: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  #overlay-analyse .pbarre-modale > div { height: 100%; width: 0%; background: var(--accent); transition: width .2s; }
+  #overlay-analyse .pbarre-modale > div.indet { width: 35% !important; transition: none; animation: indet 1.1s ease-in-out infinite; }
   .carte { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 2px; position: relative; }
   .carte.plus { border: 3px solid var(--vert); }
   .carte.moins { border: 3px solid var(--accent); }
@@ -313,7 +324,7 @@
         <button class="btn" onclick="document.getElementById('fichier-import').click()" title="Ajoute des images comme vignettes normales (marquage, filtres, séries…). Date de prise de vue lue dans l'EXIF si présente, sinon date du fichier. Conservées dans ce navigateur, et sur le dépôt GitHub s'il est configuré.">🖼️ Importer des images…</button>
         <input type="file" id="fichier-import" accept="image/*" multiple style="display:none" onchange="importerFichiers(this.files); this.value='';">
         <button class="btn" onclick="etatSync('Sélection du dossier…',''); document.getElementById('scan-dossier').click()" title="Choisis un dossier de ton ordinateur : l'application affiche l'arborescence de ses sous-dossiers avec une case à cocher à chaque niveau. Fonction d'ordinateur (Safari/Chrome) — non disponible sur iPhone. L'analyse est purement locale.">📂 Analyser un dossier…</button>
-        <input type="file" id="scan-dossier" webkitdirectory directory multiple style="display:none" onchange="analyserDossier(this.files); this.value='';">
+        <input type="file" id="scan-dossier" webkitdirectory directory multiple style="display:none" onchange="analyserDossier(this.files, this)">
         <button class="btn" id="btn-voir-arbre" disabled onclick="afficherArbreCourant()" title="Ré-affiche la dernière arborescence analysée (conservée pendant la session), avec les dossiers déjà cochés.">🌲 Voir l'arborescence</button>
         <button class="btn violet" id="btn-creer-coches" disabled onclick="importerDossiersCoches()" title="Crée des vignettes pour toutes les photos des dossiers cochés dans l'arborescence.">☑️ Créer les vignettes des dossiers cochés</button>
       </div>
@@ -445,8 +456,19 @@
 <!-- Surcouche de dépôt (glisser-déposer) -->
 <div id="drop-overlay"><div class="boite">Déposez vos images ici</div></div>
 
+<!-- Fenêtre modale bloquante pendant l'analyse d'un dossier -->
+<div class="overlay" id="overlay-analyse">
+  <div class="analyse-modale">
+    <div class="spin gros"></div>
+    <div class="titre">Analyse d'un dossier en cours…</div>
+    <div class="detail" id="analyse-detail">Lecture de la liste des fichiers…</div>
+    <div class="pbarre-modale"><div id="analyse-barre"></div></div>
+    <button class="btn" onclick="annulerAnalyse()">✕ Annuler l'analyse</button>
+  </div>
+</div>
+
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.12</span>
+  <span class="version">version autonome 2026-07-30.13</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -496,7 +518,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.12";
+const VERSION = "2026-07-30.13";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -762,30 +784,33 @@ let _noeudsParId = new Map(), _idNoeud = 0;
 let _arbreCourant = null;          // dernière arborescence analysée (conservée en session)
 let _dossiersCoches = new Set();   // ids des dossiers cochés (conservés entre affichages)
 function _nouveauNoeud(nom) { const id = ++_idNoeud; const n = { id, nom, enfants: new Map(), fichiers: [], nbDirect: 0, nbTotal: 0 }; _noeudsParId.set(id, n); return n; }
-async function analyserDossier(fileList) {
+let _analyseAnnulee = false;
+function majAnalyseModale(texte, ratio) {
+  const d = document.getElementById("analyse-detail"); if (d && texte != null) d.textContent = texte;
+  const bar = document.getElementById("analyse-barre"); if (!bar) return;
+  if (ratio == null) bar.classList.add("indet");
+  else { bar.classList.remove("indet"); bar.style.width = Math.max(0, Math.min(100, ratio * 100)) + "%"; }
+}
+function ouvrirAnalyseModale() { _analyseAnnulee = false; majAnalyseModale("Lecture de la liste des fichiers…", null); document.getElementById("overlay-analyse").classList.add("ouvert"); }
+function fermerAnalyseModale() { document.getElementById("overlay-analyse").classList.remove("ouvert"); const b = document.getElementById("analyse-barre"); if (b) { b.classList.remove("indet"); b.style.width = "0%"; } }
+function annulerAnalyse() { _analyseAnnulee = true; majAnalyseModale("Annulation…", null); }
+
+async function analyserDossier(fileList, input) {
   activerOnglet("import");
   etatSync("Analyse du dossier en cours…", "");
-  // Retour visuel IMMÉDIAT, avant tout traitement lourd : sur un gros
-  // dossier, l'extraction de la liste des fichiers (ci-dessous) peut à elle
-  // seule prendre du temps, et sans ceci l'écran semblait ne rien faire.
-  const c = document.getElementById("contenu");
-  c.innerHTML = `<div class="analyse-encours"><div class="spin"></div><div class="grand">Analyse du dossier en cours…</div><div class="petit" id="analyse-txt">Lecture de la liste des fichiers…</div></div>`;
-  c.scrollTop = 0;
-  progression(true, "Analyse du dossier en cours…", null);
-  await pause();                     // laisse le navigateur PEINDRE avant le gros travail
-  const maj = (t) => { const e = document.getElementById("analyse-txt"); if (e) e.textContent = t; };
-  const files = [...fileList];
-  if (!files.length) { progression(false); revenirAuxVignettes(); return; }
-  const N = files.length;
-  maj(`0 / ${N.toLocaleString("fr-FR")} fichiers`);
+  ouvrirAnalyseModale();                 // fenêtre bloquante affichée AVANT tout traitement
+  await pause();                          // laisse le navigateur peindre la modale
+  const finir = () => { fermerAnalyseModale(); progression(false); if (input) input.value = ""; };
+  const N = fileList.length;
+  if (!N) { finir(); return; }
+  majAnalyseModale(`0 / ${N.toLocaleString("fr-FR")} fichiers`, 0);
   progression(true, `Analyse : 0 / ${N.toLocaleString("fr-FR")} fichiers`, 0);
-  await pause();
   _noeudsParId = new Map(); _idNoeud = 0; _dossiersCoches = new Set();   // nouvelle analyse : remplace la précédente
-  const racineNom = (files[0].webkitRelativePath || files[0].name).split("/")[0] || "Dossier";
+  const racineNom = (fileList[0].webkitRelativePath || fileList[0].name).split("/")[0] || "Dossier";
   const racine = _nouveauNoeud(racineNom);
   let nbPhotos = 0;
-  for (let i = 0; i < N; i++) {
-    const f = files[i];
+  for (let i = 0; i < N; i++) {          // on parcourt la FileList directement (pas d'extraction bloquante)
+    const f = fileList[i];
     const chemin = (f.webkitRelativePath || f.name).split("/");
     const estPhoto = RE_PHOTO.test(f.name);
     if (estPhoto) { nbPhotos++; racine.nbTotal++; }
@@ -798,15 +823,19 @@ async function analyserDossier(fileList) {
     }
     if (estPhoto) { node.nbDirect++; node.fichiers.push(f); }
     if ((i & 4095) === 0) {
+      if (_analyseAnnulee) { finir(); etatSync("Analyse annulée", ""); revenirAuxVignettes(); return; }
       const t = `${i.toLocaleString("fr-FR")} / ${N.toLocaleString("fr-FR")} fichiers — ${nbPhotos.toLocaleString("fr-FR")} photo(s)`;
-      maj(t); progression(true, "Analyse : " + t, i / N); await pause();
+      majAnalyseModale(t, i / N); progression(true, "Analyse : " + t, i / N); await pause();
     }
   }
-  maj("Construction de l'arborescence…");
+  if (_analyseAnnulee) { finir(); etatSync("Analyse annulée", ""); revenirAuxVignettes(); return; }
+  majAnalyseModale("Construction de l'arborescence…", null);
   progression(true, "Construction de l'arborescence…", null);
   await pause();
   afficherArbre(racine, nbPhotos, N);
   progression(false);
+  fermerAnalyseModale();
+  if (input) input.value = "";
   _arbreCourant = { racine, nbPhotos, nbFichiers: N };
   const bv = document.getElementById("btn-voir-arbre"); if (bv) bv.disabled = false;
   majBoutonImport();
