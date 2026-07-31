@@ -1,14 +1,6 @@
 {
   "vignettes": [
     {
-      "uuid": "local:IMG_9901.jpeg:3815693",
-      "fichier": "data/vignettes-importees/local_IMG_9901.jpeg_3815693.jpeg",
-      "datetime": "2026-07-30T17:40:49",
-      "personnes": [],
-      "score": null,
-      "scores_detail": {}
-    },
-    {
       "uuid": "local:IMG_0616.jpg:288227",
       "fichier": "data/vignettes-importees/local_IMG_0616.jpg_288227.jpg",
       "datetime": "2025-07-24T15:19:40",
@@ -121,5 +113,5 @@
       "scores_detail": {}
     }
   ],
-  "maj": "2026-07-31T20:10:43.327Z"
+  "maj": "2026-07-31T20:10:48.870Z"
 }
