@@ -152,6 +152,7 @@
   .arbre .nb { color: var(--vert); font-weight: 700; }
   .arbre .feuille { padding: 3px 6px; color: var(--text); }
   .arbre-niveau { margin-left: 12px; border-left: 1px solid var(--border); padding-left: 8px; }
+  .arbre .cb-dossier { width: auto; margin: 0 4px 0 0; vertical-align: middle; cursor: pointer; }
   .carte { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 2px; position: relative; }
   .carte.plus { border: 3px solid var(--vert); }
   .carte.moins { border: 3px solid var(--accent); }
@@ -249,7 +250,8 @@
   .reglages input.large { width: 100%; }
 
   @media (max-width: 430px) {
-    .onglet { font-size: 12px; padding: 10px 3px; gap: 4px; }
+    #onglets { flex-wrap: wrap; }
+    .onglet { flex: 1 1 21%; font-size: 11px; padding: 8px 2px; gap: 3px; }
     #panneau-filtres .chips { flex-wrap: nowrap; align-items: stretch; gap: 5px; margin-bottom: 8px !important; }
     #panneau-filtres .chip { flex: 1 1 0; min-width: 0; }
     #panneau-filtres .chip-corps { width: 100%; justify-content: center; text-align: center; white-space: normal;
@@ -281,6 +283,7 @@
       <button type="button" id="onglet-series" class="onglet" onclick="activerOnglet('series')"><span>🎞️</span><span class="txt">Séries</span><span class="pastille"></span></button>
       <button type="button" id="onglet-albums" class="onglet" onclick="activerOnglet('albums')"><span>📁</span><span class="txt">Albums</span></button>
       <button type="button" id="onglet-info" class="onglet" onclick="activerOnglet('info')"><span>ℹ️</span><span class="txt">Info</span></button>
+      <button type="button" id="onglet-import" class="onglet" onclick="activerOnglet('import')"><span>📥</span><span class="txt">Import</span></button>
       <button type="button" id="onglet-reglages" class="onglet" onclick="activerOnglet('reglages')"><span>⚙️</span><span class="txt">Réglages</span><span class="pastille"></span></button>
     </div>
 
@@ -293,12 +296,20 @@
           <input type="text" id="texte-album" maxlength="40" placeholder="(aucun)" oninput="publierTexteAlbum()" style="width:220px;"></label>
         <button class="btn" onclick="basculerToutVoir()" id="btn-tout-voir">👁️ Tout déplier</button>
         <button class="btn" onclick="basculerToutesPhotos()" id="btn-tout-photos" title="Affiche toutes les photos, toutes années et tous mois confondus, par tranches de 100 (avec un bouton pour charger les suivantes). Les filtres restent actifs.">🌐 Voir toutes les photos</button>
-        <button class="btn" onclick="etatSync('Sélection du dossier…',''); document.getElementById('scan-dossier').click()" title="Choisis un dossier de ton ordinateur : l'application affiche l'arborescence de ses sous-dossiers et le nombre de photos dans chacun. Fonction d'ordinateur (Safari/Chrome) — non disponible sur iPhone. Aucune image n'est envoyée nulle part : l'analyse est purement locale.">📂 Analyser un dossier…</button>
-        <input type="file" id="scan-dossier" webkitdirectory directory multiple style="display:none" onchange="analyserDossier(this.files); this.value='';">
-        <button class="btn" onclick="document.getElementById('fichier-import').click()" title="Ajoute des images comme vignettes normales (marquage, filtres, séries…). Date de prise de vue lue dans l'EXIF si présente, sinon date du fichier. Conservées dans ce navigateur (elles réapparaissent après un rechargement) ; effaçables depuis l'onglet ⚙️ Réglages.">🖼️ Importer des images…</button>
-        <input type="file" id="fichier-import" accept="image/*" multiple style="display:none" onchange="importerFichiers(this.files); this.value='';">
       </div>
-      <div class="zone-depot" onclick="document.getElementById('fichier-import').click()">Glisse-dépose des images ici (ou clique) pour les ajouter comme vignettes de test.</div>
+    </div>
+
+    <!-- Onglet IMPORT : analyse de dossier + import d'images -->
+    <div id="panneau-import" class="panneau">
+      <div class="champs" style="gap:10px;">
+        <button class="btn" onclick="document.getElementById('fichier-import').click()" title="Ajoute des images comme vignettes normales (marquage, filtres, séries…). Date de prise de vue lue dans l'EXIF si présente, sinon date du fichier. Conservées dans ce navigateur, et sur le dépôt GitHub s'il est configuré.">🖼️ Importer des images…</button>
+        <input type="file" id="fichier-import" accept="image/*" multiple style="display:none" onchange="importerFichiers(this.files); this.value='';">
+        <button class="btn" onclick="etatSync('Sélection du dossier…',''); document.getElementById('scan-dossier').click()" title="Choisis un dossier de ton ordinateur : l'application affiche l'arborescence de ses sous-dossiers avec une case à cocher à chaque niveau. Fonction d'ordinateur (Safari/Chrome) — non disponible sur iPhone. L'analyse est purement locale.">📂 Analyser un dossier…</button>
+        <input type="file" id="scan-dossier" webkitdirectory directory multiple style="display:none" onchange="analyserDossier(this.files); this.value='';">
+        <button class="btn violet" id="btn-creer-coches" disabled onclick="importerDossiersCoches()" title="Crée des vignettes pour toutes les photos des dossiers cochés dans l'arborescence ci-dessous.">☑️ Créer les vignettes des dossiers cochés</button>
+      </div>
+      <div class="zone-depot" onclick="document.getElementById('fichier-import').click()">Glisse-dépose des images ici (ou clique) pour les ajouter comme vignettes.</div>
+      <p class="aide">« Analyser un dossier » affiche l'arborescence avec une case à cocher par dossier (cocher un dossier coche aussi ses sous-dossiers). Coche les dossiers voulus puis clique « Créer les vignettes des dossiers cochés ». L'analyse d'un dossier s'affiche dans la zone des vignettes ci-dessous.</p>
     </div>
 
     <!-- Onglet FILTRES -->
@@ -426,7 +437,7 @@
 <div id="drop-overlay"><div class="boite">Déposez vos images ici</div></div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.9</span>
+  <span class="version">version autonome 2026-07-30.10</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -476,7 +487,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.9";
+const VERSION = "2026-07-30.10";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -731,22 +742,26 @@ async function importerFichiers(fileList) {
   activerOnglet("mois");
   rafraichir();
   progression(false);
+  majBoutonImport();
   etatSync(files.length + " image(s) importée(s) — conservées dans ce navigateur", "ok");
   if (CONFIG.repo && TOKEN) sauverImporteesSurGithub(true);   // sécurise sur le dépôt (silencieux)
 }
 
-/* ---- Analyse d'un dossier local : arborescence + nombre de photos ---- */
+/* ---- Analyse d'un dossier local : arborescence + cases à cocher ---- */
 const RE_PHOTO = /\.(jpe?g|png|gif|webp|bmp|tiff?|heic|heif|avif|cr2|cr3|nef|arw|dng|raf|orf|rw2|sr2|pef|srw)$/i;
+let _noeudsParId = new Map(), _idNoeud = 0;
+function _nouveauNoeud(nom) { const id = ++_idNoeud; const n = { id, nom, enfants: new Map(), fichiers: [], nbDirect: 0, nbTotal: 0 }; _noeudsParId.set(id, n); return n; }
 async function analyserDossier(fileList) {
   const files = [...fileList];
   if (!files.length) return;
   const N = files.length;
-  activerOnglet("mois");
+  activerOnglet("import");
   etatSync("Analyse du dossier…", "");
   progression(true, `Analyse du dossier : 0 / ${N.toLocaleString("fr-FR")} fichiers`, 0);
   await pause();
+  _noeudsParId = new Map(); _idNoeud = 0;
   const racineNom = (files[0].webkitRelativePath || files[0].name).split("/")[0] || "Dossier";
-  const racine = { nom: racineNom, enfants: new Map(), nbDirect: 0, nbTotal: 0 };
+  const racine = _nouveauNoeud(racineNom);
   let nbPhotos = 0;
   for (let i = 0; i < N; i++) {
     const f = files[i];
@@ -756,23 +771,25 @@ async function analyserDossier(fileList) {
     let node = racine;
     for (let k = 1; k < chemin.length - 1; k++) {
       const seg = chemin[k];
-      if (!node.enfants.has(seg)) node.enfants.set(seg, { nom: seg, enfants: new Map(), nbDirect: 0, nbTotal: 0 });
+      if (!node.enfants.has(seg)) node.enfants.set(seg, _nouveauNoeud(seg));
       node = node.enfants.get(seg);
       if (estPhoto) node.nbTotal++;
     }
-    if (estPhoto) node.nbDirect++;
+    if (estPhoto) { node.nbDirect++; node.fichiers.push(f); }
     if ((i & 4095) === 0) { progression(true, `Analyse : ${i.toLocaleString("fr-FR")} / ${N.toLocaleString("fr-FR")} fichiers — ${nbPhotos.toLocaleString("fr-FR")} photo(s)`, i / N); await pause(); }
   }
   progression(true, "Construction de l'arborescence…", null);
   await pause();
   afficherArbre(racine, nbPhotos, N);
   progression(false);
-  etatSync("Analyse terminée", "ok");
+  majBoutonImport();
+  etatSync("Analyse terminée — coche les dossiers à importer", "ok");
 }
 function noeudArbreHtml(node, ouvert) {
   const enfants = [...node.enfants.values()].filter(e => e.nbTotal > 0).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   const direct = node.nbDirect ? ` <span style="color:var(--text-dim);font-weight:400;">· ${node.nbDirect.toLocaleString("fr-FR")} ici</span>` : "";
-  const tete = `📁 ${esc(node.nom)} <span class="nb">${node.nbTotal.toLocaleString("fr-FR")}</span>${direct}`;
+  const cb = `<input type="checkbox" class="cb-dossier" data-id="${node.id}" data-direct="${node.nbDirect}" onclick="event.stopPropagation()" onchange="cascadeCoche(this, ${enfants.length > 0})" title="Cocher pour importer les photos de ce dossier${enfants.length ? " et de ses sous-dossiers" : ""}">`;
+  const tete = `${cb}📁 ${esc(node.nom)} <span class="nb">${node.nbTotal.toLocaleString("fr-FR")}</span>${direct}`;
   if (enfants.length) {
     return `<details${ouvert ? " open" : ""}><summary><span class="chevron">▸</span> ${tete}</summary><div class="arbre-niveau">${enfants.map(e => noeudArbreHtml(e, false)).join("")}</div></details>`;
   }
@@ -786,12 +803,38 @@ function afficherArbre(racine, nbPhotos, nbFichiers) {
   }
   c.innerHTML = `<div style="margin-bottom:10px;">
       <button class="btn" onclick="revenirAuxVignettes()">← Revenir aux vignettes</button>
-      <div style="margin-top:8px;font-size:13px;">Analyse de « ${esc(racine.nom)} » — <span class="nb">${nbPhotos.toLocaleString("fr-FR")}</span> photo(s) sur ${nbFichiers.toLocaleString("fr-FR")} fichier(s). Chaque dossier indique le total de son sous-arbre, et « · N ici » les photos qu'il contient directement.</div>
+      <div style="margin-top:8px;font-size:13px;">Analyse de « ${esc(racine.nom)} » — <span class="nb">${nbPhotos.toLocaleString("fr-FR")}</span> photo(s) sur ${nbFichiers.toLocaleString("fr-FR")} fichier(s). Coche les dossiers voulus, puis clique « Créer les vignettes des dossiers cochés » (onglet 📥 Import).</div>
     </div>
     <div class="arbre">${noeudArbreHtml(racine, true)}</div>`;
   c.scrollTop = 0;
 }
 function revenirAuxVignettes() { if (modeTout) rafraichirTout(); else rafraichir(); }
+// Cocher un dossier coche aussi tous ses sous-dossiers (et inversement).
+function cascadeCoche(cb, aDesEnfants) {
+  if (aDesEnfants) {
+    const det = cb.closest("details");
+    if (det) det.querySelectorAll(".arbre-niveau input.cb-dossier").forEach(x => { x.checked = cb.checked; });
+  }
+  majBoutonImport();
+}
+function majBoutonImport() {
+  const btn = document.getElementById("btn-creer-coches"); if (!btn) return;
+  let n = 0; document.querySelectorAll(".cb-dossier:checked").forEach(cb => { n += parseInt(cb.getAttribute("data-direct") || "0", 10); });
+  btn.disabled = n === 0;
+  btn.textContent = n > 0 ? `☑️ Créer les vignettes des dossiers cochés (${n.toLocaleString("fr-FR")} photo(s))` : "☑️ Créer les vignettes des dossiers cochés";
+}
+// Crée les vignettes de toutes les photos des dossiers cochés (dédupliquées).
+async function importerDossiersCoches() {
+  const coches = [...document.querySelectorAll(".cb-dossier:checked")];
+  if (!coches.length) { etatSync("Aucun dossier coché.", "err"); return; }
+  const vus = new Set(); const fichiers = [];
+  for (const cb of coches) {
+    const node = _noeudsParId.get(+cb.getAttribute("data-id")); if (!node) continue;
+    for (const f of node.fichiers) { const k = f.name + ":" + f.size; if (!vus.has(k)) { vus.add(k); fichiers.push(f); } }
+  }
+  if (!fichiers.length) { etatSync("Aucune photo dans les dossiers cochés.", "err"); return; }
+  await importerFichiers(fichiers);
+}
 
 // Glisser-déposer sur toute la fenêtre.
 let _dragCompteur = 0;
@@ -1309,7 +1352,7 @@ function majSuggestionsPersonnes() {
 /* =========================================================================
    ONGLETS / FILTRES AVANCÉS / PASTILLES
    ========================================================================= */
-const ONGLETS = ["mois", "filtres", "series", "albums", "info", "reglages"];
+const ONGLETS = ["mois", "filtres", "series", "albums", "info", "import", "reglages"];
 function activerOnglet(nom) {
   if (!ONGLETS.includes(nom)) nom = "mois";
   for (const o of ONGLETS) {
