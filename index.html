@@ -165,12 +165,23 @@
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: none;
     align-items: center; justify-content: center; z-index: 50; padding: 20px; }
   .overlay.ouvert { display: flex; }
-  #zoom-img { max-width: 96vw; max-height: 82vh; object-fit: contain; border-radius: 6px; }
-  .zoom-nav { position: absolute; top: 50%; transform: translateY(-50%); font-size: 40px; color: #fff;
-    background: rgba(0,0,0,.4); border: none; cursor: pointer; padding: 8px 16px; border-radius: 8px; }
-  .zoom-nav.prev { left: 10px; } .zoom-nav.next { right: 10px; }
-  .zoom-fermer { position: absolute; top: 14px; right: 18px; font-size: 26px; color: #fff; background: none; border: none; cursor: pointer; }
-  .zoom-info { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; color: #fff; font-size: 13px; }
+  #overlay-zoom { flex-direction: column; }
+  .zoom-corps { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 98vw; max-height: 94vh; }
+  #zoom-img { max-width: 96vw; max-height: 64vh; object-fit: contain; border-radius: 6px; border: 4px solid transparent; background: #000; cursor: zoom-out; }
+  #zoom-img.plein { max-height: 88vh; max-width: 98vw; }
+  .zoom-barre { display: flex; flex-direction: column; gap: 8px; align-items: center; width: 100%; }
+  .zoom-ligne { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .zoom-ligne button { background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 14px; font-size: 13px; font-family: inherit; cursor: pointer; }
+  .zoom-ligne button:hover { background: var(--panel-hover); }
+  .zoom-ligne button.on-moins { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .zoom-ligne button.on-plus { background: var(--vert); border-color: var(--vert); color: #08331d; }
+  .zoom-ligne.petite button { font-size: 12px; padding: 7px 11px; color: var(--text-dim); }
+  .zoom-fermer { position: fixed; top: 14px; right: 18px; font-size: 26px; color: #fff; background: none; border: none; cursor: pointer; z-index: 2; }
+  .zoom-plein { position: fixed; top: 14px; left: 18px; font-size: 20px; color: #fff; background: rgba(0,0,0,.35);
+    border: none; cursor: pointer; z-index: 2; border-radius: 6px; padding: 2px 9px; }
+  .zoom-info { color: #fff; font-size: 13px; text-align: center; }
+  @media (max-width: 560px) { .zoom-ligne button { padding: 8px 10px; font-size: 12px; } #zoom-img { max-height: 52vh; } }
   .boite-meta { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
     max-width: 460px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 18px 20px; }
   .boite-meta h3 { margin: 0 0 10px; font-size: 15px; }
@@ -369,18 +380,33 @@
 <div id="drop-overlay"><div class="boite">Déposez vos images ici</div></div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.2</span>
+  <span class="version">version autonome 2026-07-30.3</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
 
 <!-- Overlay zoom -->
-<div class="overlay" id="overlay-zoom" onclick="if(event.target===this)fermerZoom()">
-  <button class="zoom-fermer" onclick="fermerZoom()">✕</button>
-  <button class="zoom-nav prev" onclick="naviguerZoom(-1)">‹</button>
-  <img id="zoom-img" alt="">
-  <button class="zoom-nav next" onclick="naviguerZoom(1)">›</button>
-  <div class="zoom-info" id="zoom-info"></div>
+<div class="overlay" id="overlay-zoom">
+  <button class="zoom-fermer" onclick="fermerZoom()" title="Fermer (Échap)">✕</button>
+  <button class="zoom-plein" onclick="basculerPleinZoom()" title="Plein cadre">⤢</button>
+  <div class="zoom-corps">
+    <img id="zoom-img" alt="" onclick="fermerZoom()">
+    <div class="zoom-barre">
+      <div class="zoom-ligne">
+        <button onclick="navZoom(-1)" title="Précédente (flèche ←)">‹ Précédent</button>
+        <button id="zb-moins" onclick="marquerDansZoom('moins')" title="Basculer la marque − (flèche ↓)">☐ Marquer −</button>
+        <button id="zb-plus" onclick="marquerDansZoom('plus')" title="Basculer la marque + (flèche ↑)">☐ Marquer +</button>
+        <button onclick="navZoom(1)" title="Suivante (flèche →)">Suivant ›</button>
+      </div>
+      <div class="zoom-ligne petite">
+        <button id="zb-moins-prev" onclick="marquerEtNaviguer('moins',-1)" title="Marquer − puis image précédente">− puis ‹</button>
+        <button id="zb-moins-next" onclick="marquerEtNaviguer('moins',1)" title="Marquer − puis image suivante (touche Suppr / ⌫)">− puis ›</button>
+        <button id="zb-plus-prev" onclick="marquerEtNaviguer('plus',-1)" title="Marquer + puis image précédente">+ puis ‹</button>
+        <button id="zb-plus-next" onclick="marquerEtNaviguer('plus',1)" title="Marquer + puis image suivante">+ puis ›</button>
+      </div>
+      <div class="zoom-info" id="zoom-info"></div>
+    </div>
+  </div>
 </div>
 
 <!-- Overlay métadonnées -->
@@ -403,7 +429,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.2";
+const VERSION = "2026-07-30.3";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -1084,17 +1110,36 @@ async function exporterAlbumsAnnee() {
    ========================================================================= */
 function vignetteParUuid(uuid) { return MANIFEST.find(v => v.uuid === uuid) || null; }
 function listeAffichee() { const out = []; for (const j of Object.keys(moisCourant.jours).sort((a, b) => +a - +b)) for (const v of moisCourant.jours[j]) out.push(v.uuid); return out; }
+let zoomPlein = false;
 function ouvrirZoom(uuid) {
   zoomListe = listeAffichee(); zoomIndex = Math.max(0, zoomListe.indexOf(uuid));
-  majZoom(); document.getElementById("overlay-zoom").classList.add("ouvert");
+  majControlesZoom(); document.getElementById("overlay-zoom").classList.add("ouvert");
 }
-function majZoom() {
-  const v = vignetteParUuid(zoomListe[zoomIndex]); if (!v) return;
-  document.getElementById("zoom-img").src = urlImage(v);
-  const mk = DATA.marques[v.uuid]; const etiquette = mk === "plus" ? " · marquée +" : mk === "moins" ? " · marquée −" : "";
-  document.getElementById("zoom-info").textContent = `${v.heure || ""}${etiquette}  (${zoomIndex + 1}/${zoomListe.length})`;
+function majControlesZoom() {
+  const uuid = zoomListe[zoomIndex]; const v = vignetteParUuid(uuid); if (!v) return;
+  const img = document.getElementById("zoom-img"); img.src = urlImage(v);
+  const mk = DATA.marques[uuid] || null;
+  img.style.borderColor = mk === "plus" ? "var(--vert)" : mk === "moins" ? "var(--accent)" : "transparent";
+  const bM = document.getElementById("zb-moins"), bP = document.getElementById("zb-plus");
+  bM.textContent = mk === "moins" ? "✓ Marquée −" : "☐ Marquer −"; bM.className = mk === "moins" ? "on-moins" : "";
+  bP.textContent = mk === "plus" ? "✓ Marquée +" : "☐ Marquer +"; bP.className = mk === "plus" ? "on-plus" : "";
+  // Boutons « marquer puis naviguer » : celui qui correspond à la marque
+  // déjà posée est masqué, pour que ce chemin ne puisse jamais démarquer.
+  document.getElementById("zb-moins-prev").style.visibility = mk === "moins" ? "hidden" : "visible";
+  document.getElementById("zb-moins-next").style.visibility = mk === "moins" ? "hidden" : "visible";
+  document.getElementById("zb-plus-prev").style.visibility = mk === "plus" ? "hidden" : "visible";
+  document.getElementById("zb-plus-next").style.visibility = mk === "plus" ? "hidden" : "visible";
+  const etq = mk === "plus" ? " · marquée +" : mk === "moins" ? " · marquée −" : "";
+  document.getElementById("zoom-info").textContent = `${v.heure || ""}${etq}  (${zoomIndex + 1}/${zoomListe.length})`;
 }
-function naviguerZoom(d) { if (!zoomListe.length) return; zoomIndex = (zoomIndex + d + zoomListe.length) % zoomListe.length; majZoom(); }
+function navZoom(d) { if (!zoomListe.length) return; zoomIndex = Math.min(zoomListe.length - 1, Math.max(0, zoomIndex + d)); majControlesZoom(); }
+function marquerDansZoom(type) { const uuid = zoomListe[zoomIndex]; if (!uuid) return; poserMarque(uuid, type); finaliserMarquage(); majControlesZoom(); }
+function marquerEtNaviguer(type, delta) {
+  const uuid = zoomListe[zoomIndex]; if (!uuid) return;
+  if ((DATA.marques[uuid] || null) !== type) poserMarque(uuid, type); // pose/remplace, jamais retire
+  finaliserMarquage(); navZoom(delta);
+}
+function basculerPleinZoom() { zoomPlein = !zoomPlein; document.getElementById("zoom-img").classList.toggle("plein", zoomPlein); }
 function fermerZoom() { document.getElementById("overlay-zoom").classList.remove("ouvert"); }
 
 function afficherMetadonnees(uuid) {
@@ -1119,8 +1164,11 @@ function fermerMeta() { document.getElementById("overlay-meta").classList.remove
 
 document.addEventListener("keydown", e => {
   if (document.getElementById("overlay-zoom").classList.contains("ouvert")) {
-    if (e.key === "ArrowLeft") naviguerZoom(-1);
-    else if (e.key === "ArrowRight") naviguerZoom(1);
+    if (e.key === "ArrowLeft") { e.preventDefault(); navZoom(-1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); navZoom(1); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); marquerDansZoom("plus"); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); marquerDansZoom("moins"); }
+    else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); marquerEtNaviguer("moins", 1); }
     else if (e.key === "Escape") fermerZoom();
   } else if (document.getElementById("overlay-meta").classList.contains("ouvert") && e.key === "Escape") fermerMeta();
 });
