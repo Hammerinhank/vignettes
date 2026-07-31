@@ -323,7 +323,7 @@
       <div class="champs" style="gap:10px;">
         <button class="btn" onclick="document.getElementById('fichier-import').click()" title="Ajoute des images comme vignettes normales (marquage, filtres, séries…). Date de prise de vue lue dans l'EXIF si présente, sinon date du fichier. Conservées dans ce navigateur, et sur le dépôt GitHub s'il est configuré.">🖼️ Importer des images…</button>
         <input type="file" id="fichier-import" accept="image/*" multiple style="display:none" onchange="importerFichiers(this.files); this.value='';">
-        <button class="btn" onclick="etatSync('Sélection du dossier…',''); document.getElementById('scan-dossier').click()" title="Choisis un dossier de ton ordinateur : l'application affiche l'arborescence de ses sous-dossiers avec une case à cocher à chaque niveau. Fonction d'ordinateur (Safari/Chrome) — non disponible sur iPhone. L'analyse est purement locale.">📂 Analyser un dossier…</button>
+        <button class="btn" onclick="lancerAnalyseDossier()" title="Choisis un dossier de ton ordinateur : l'application affiche l'arborescence de ses sous-dossiers avec une case à cocher à chaque niveau. Fonction d'ordinateur (Safari/Chrome) — non disponible sur iPhone. L'analyse est purement locale.">📂 Analyser un dossier…</button>
         <input type="file" id="scan-dossier" webkitdirectory directory multiple style="display:none" onchange="analyserDossier(this.files, this)">
         <button class="btn" id="btn-voir-arbre" disabled onclick="afficherArbreCourant()" title="Ré-affiche la dernière arborescence analysée (conservée pendant la session), avec les dossiers déjà cochés.">🌲 Voir l'arborescence</button>
         <button class="btn violet" id="btn-creer-coches" disabled onclick="importerDossiersCoches()" title="Crée des vignettes pour toutes les photos des dossiers cochés dans l'arborescence.">☑️ Créer les vignettes des dossiers cochés</button>
@@ -468,7 +468,7 @@
 </div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.13</span>
+  <span class="version">version autonome 2026-07-30.14</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -518,7 +518,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.13";
+const VERSION = "2026-07-30.14";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -784,25 +784,43 @@ let _noeudsParId = new Map(), _idNoeud = 0;
 let _arbreCourant = null;          // dernière arborescence analysée (conservée en session)
 let _dossiersCoches = new Set();   // ids des dossiers cochés (conservés entre affichages)
 function _nouveauNoeud(nom) { const id = ++_idNoeud; const n = { id, nom, enfants: new Map(), fichiers: [], nbDirect: 0, nbTotal: 0 }; _noeudsParId.set(id, n); return n; }
-let _analyseAnnulee = false;
+let _analyseAnnulee = false, _attenteSelection = false, _analyseEnCours = false;
 function majAnalyseModale(texte, ratio) {
   const d = document.getElementById("analyse-detail"); if (d && texte != null) d.textContent = texte;
   const bar = document.getElementById("analyse-barre"); if (!bar) return;
   if (ratio == null) bar.classList.add("indet");
   else { bar.classList.remove("indet"); bar.style.width = Math.max(0, Math.min(100, ratio * 100)) + "%"; }
 }
-function ouvrirAnalyseModale() { _analyseAnnulee = false; majAnalyseModale("Lecture de la liste des fichiers…", null); document.getElementById("overlay-analyse").classList.add("ouvert"); }
+function ouvrirAnalyseModale() { majAnalyseModale("Préparation…", null); document.getElementById("overlay-analyse").classList.add("ouvert"); }
 function fermerAnalyseModale() { document.getElementById("overlay-analyse").classList.remove("ouvert"); const b = document.getElementById("analyse-barre"); if (b) { b.classList.remove("indet"); b.style.width = "0%"; } }
-function annulerAnalyse() { _analyseAnnulee = true; majAnalyseModale("Annulation…", null); }
+function annulerAnalyse() {
+  _analyseAnnulee = true; _attenteSelection = false;
+  majAnalyseModale("Annulation…", null);
+  if (!_analyseEnCours) { fermerAnalyseModale(); progression(false); etatSync("Analyse annulée", ""); }
+}
+// Affiche la modale DÈS LE CLIC, puis ouvre le sélecteur de dossier (la boîte
+// native de Safari — choix du dossier, autorisation — s'affiche par-dessus).
+function lancerAnalyseDossier() {
+  _analyseAnnulee = false; _analyseEnCours = false; _attenteSelection = true;
+  activerOnglet("import");
+  etatSync("Sélection du dossier…", "");
+  ouvrirAnalyseModale();
+  majAnalyseModale("Choisis le dossier à analyser, puis confirme l'accès si Safari le demande…", null);
+  document.getElementById("scan-dossier").click();
+}
 
 async function analyserDossier(fileList, input) {
+  _attenteSelection = false;
   activerOnglet("import");
   etatSync("Analyse du dossier en cours…", "");
-  ouvrirAnalyseModale();                 // fenêtre bloquante affichée AVANT tout traitement
+  if (!document.getElementById("overlay-analyse").classList.contains("ouvert")) ouvrirAnalyseModale();
+  _analyseAnnulee = false;
+  majAnalyseModale("Lecture de la liste des fichiers…", null);
   await pause();                          // laisse le navigateur peindre la modale
-  const finir = () => { fermerAnalyseModale(); progression(false); if (input) input.value = ""; };
+  const finir = () => { _analyseEnCours = false; fermerAnalyseModale(); progression(false); if (input) input.value = ""; };
   const N = fileList.length;
   if (!N) { finir(); return; }
+  _analyseEnCours = true;
   majAnalyseModale(`0 / ${N.toLocaleString("fr-FR")} fichiers`, 0);
   progression(true, `Analyse : 0 / ${N.toLocaleString("fr-FR")} fichiers`, 0);
   _noeudsParId = new Map(); _idNoeud = 0; _dossiersCoches = new Set();   // nouvelle analyse : remplace la précédente
@@ -834,6 +852,7 @@ async function analyserDossier(fileList, input) {
   await pause();
   afficherArbre(racine, nbPhotos, N);
   progression(false);
+  _analyseEnCours = false;
   fermerAnalyseModale();
   if (input) input.value = "";
   _arbreCourant = { racine, nbPhotos, nbFichiers: N };
@@ -903,6 +922,8 @@ async function importerDossiersCoches() {
 
 // Glisser-déposer sur toute la fenêtre.
 let _dragCompteur = 0;
+// Si l'utilisateur ferme le sélecteur de dossier sans rien choisir, on retire la modale.
+(function () { const inp = document.getElementById("scan-dossier"); if (inp) inp.addEventListener("cancel", () => { if (_attenteSelection) { _attenteSelection = false; fermerAnalyseModale(); progression(false); etatSync("Sélection annulée", ""); } }); })();
 window.addEventListener("dragenter", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); _dragCompteur++; document.getElementById("drop-overlay").classList.add("actif"); } });
 window.addEventListener("dragover", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) e.preventDefault(); });
 window.addEventListener("dragleave", e => { e.preventDefault(); _dragCompteur = Math.max(0, _dragCompteur - 1); if (!_dragCompteur) document.getElementById("drop-overlay").classList.remove("actif"); });
