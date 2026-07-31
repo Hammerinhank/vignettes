@@ -1,1 +1,1076 @@
-gestion des vignette a venir ici
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tri des vignettes par mois — autonome</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-hover: #1e222c;
+    --border: #2a2f3a;
+    --text: #e4e6eb;
+    --text-dim: #8b909c;
+    --accent: #4f8cff;
+    --accent-hover: #3f76e0;
+    --danger: #e05a5a;
+    --vert: #00e676;
+    --violet: #8b5cf6;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column;
+    height: 100vh; height: 100dvh; overflow: hidden;
+  }
+
+  header#barre {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--border);
+  }
+  header#barre h1 { font-size: 15px; margin: 0; font-weight: 700; }
+  header#barre .etat-sync { margin-left: auto; font-size: 11px; color: var(--text-dim); }
+  header#barre .etat-sync.ok { color: #3a9f5f; }
+  header#barre .etat-sync.err { color: var(--danger); }
+
+  main#zone { flex: 1 1 auto; min-height: 0; display: flex; }
+  .cadre {
+    width: 100%; height: 100%; display: flex; flex-direction: column;
+    padding: 12px 14px;
+  }
+
+  /* ---- Onglets ---- */
+  #onglets {
+    display: flex; gap: 4px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 4px; margin-bottom: 12px; flex: 0 0 auto;
+  }
+  .onglet {
+    flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center;
+    gap: 5px; padding: 10px 6px; font-size: 13px; font-weight: 600; color: var(--text-dim);
+    background: transparent; border: none; border-radius: 7px; cursor: pointer;
+    white-space: nowrap; position: relative;
+  }
+  .onglet:hover { background: var(--panel-hover); color: var(--text); }
+  .onglet.actif { background: var(--accent); color: #fff; }
+  .onglet .pastille { position: absolute; top: 6px; right: 9px; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--vert); box-shadow: 0 0 0 2px var(--bg); display: none; }
+  .onglet.actif .pastille { box-shadow: 0 0 0 2px var(--accent); }
+  .onglet.a-filtre .pastille { display: block; }
+
+  .panneau { display: none; margin-bottom: 10px; flex: 0 0 auto; }
+  .panneau.actif { display: block; }
+
+  /* ---- Champs génériques ---- */
+  .champs { display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: center; }
+  .champs label { display: inline-flex; align-items: center; gap: 6px; margin: 0;
+    font-size: 12px; color: var(--text-dim); }
+  .champs select, .champs input {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 8px; font-size: 13px; font-family: inherit;
+  }
+  .champs input[type="checkbox"] { width: auto; }
+  .aide { font-size: 11px; color: var(--text-dim); margin: 10px 0 0; line-height: 1.5; max-width: 680px; }
+
+  button.btn { background: var(--panel); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 12px; font-size: 12px; font-family: inherit; cursor: pointer; }
+  button.btn:hover { background: var(--panel-hover); }
+  button.btn.violet { background: var(--violet); border-color: var(--violet); color: #fff; }
+  button.btn.violet:hover { filter: brightness(1.1); }
+  button.btn:disabled { opacity: .5; cursor: default; }
+
+  /* ---- Groupe score ---- */
+  .groupe-score { display: flex; gap: 8px 12px; flex-wrap: wrap; align-items: center;
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+
+  /* ---- Interrupteur ---- */
+  .interrupteur { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+    cursor: pointer; color: var(--text); font-size: 13px; }
+  .interrupteur:hover { background: var(--panel-hover); }
+
+  /* ---- Chips marque ---- */
+  .chips { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+  .chip { position: relative; display: inline-flex; cursor: pointer; margin: 0; }
+  .chip input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+  .chip-corps { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
+    border-radius: 999px; border: 1px solid var(--border); background: var(--bg);
+    color: var(--text-dim); font-size: 12.5px; white-space: nowrap;
+    transition: background .12s, border-color .12s, color .12s; }
+  .chip:hover .chip-corps { background: var(--panel-hover); color: var(--text); }
+  .chip input:checked + .chip-corps { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip.plus input:checked + .chip-corps { background: var(--vert); border-color: var(--vert); color: #08331d; }
+  .puce { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+  .puce.moins { background: var(--accent); }
+  .puce.plus { background: var(--vert); }
+  .chip input:checked + .chip-corps .puce { background: currentColor; }
+
+  /* ---- Bouton repliable filtres avancés ---- */
+  .toggle-avances { display: inline-flex; align-items: center; gap: 7px; position: relative; }
+  .toggle-avances .pastille { width: 8px; height: 8px; border-radius: 50%; background: var(--vert); display: none; }
+  .toggle-avances.a-filtre .pastille { display: inline-block; }
+
+  /* ---- Séparateur ---- */
+  .separateur { display: flex; align-items: center; justify-content: center; gap: 8px;
+    flex: 0 0 auto; margin: 4px 0 10px; padding: 6px 12px;
+    background: #d5d8dd; border: 1px solid #c1c5cd; border-radius: 8px;
+    font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #2f333c; }
+
+  /* ---- Barre statut / progression ---- */
+  #progression { display: none; margin: 6px 0; }
+  #progression .ptexte { font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+  #progression .pbarre { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; height: 9px; overflow: hidden; }
+  #progression .pbarre > div { height: 100%; width: 0%; background: var(--accent); transition: width .3s; }
+
+  /* ---- Camembert ---- */
+  #camembert { display: none; align-items: center; gap: 10px; margin-bottom: 8px; }
+  #camembert .disque { width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--border); flex: 0 0 auto; }
+  #camembert .legende { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+  #resume { font-size: 11px; color: var(--text-dim); }
+
+  /* ---- Contenu défilable + grille ---- */
+  #contenu { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  details.jour { margin-bottom: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+  details.jour > summary { cursor: pointer; padding: 6px 10px; font-size: 12px; user-select: none; list-style: none; }
+  details.jour > summary::-webkit-details-marker { display: none; }
+  .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; padding: 6px 10px 10px; }
+  .carte { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 2px; position: relative; }
+  .carte.plus { border: 3px solid var(--vert); }
+  .carte.moins { border: 3px solid var(--accent); }
+  .carte img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; border-radius: 4px; background: var(--bg); }
+  .carte .heure { font-size: 9px; color: var(--text-dim); text-align: center; margin-top: 2px; }
+  .carte .rang { display: flex; gap: 1px; margin-top: 2px; }
+  .carte .rang button { flex: 1; font-size: 9px; padding: 2px; background: var(--bg); color: var(--text-dim);
+    border: 1px solid var(--border); border-radius: 3px; cursor: pointer; }
+  .carte .rang button.on-moins { background: var(--accent); color: #fff; }
+  .carte .rang button.on-plus { background: var(--vert); color: #fff; }
+  .carte .rang2 button { flex: 1; font-size: 8px; padding: 1px; }
+  .serie { grid-column: 1 / -1; border: 2px dashed var(--violet); border-radius: 8px; padding: 6px; }
+  .serie .entete { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; font-size: 11px; color: var(--text-dim); }
+  .serie .sous-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; }
+  .cellule { position: relative; }
+  .cellule.designee { outline: 2px solid #ffd700; outline-offset: 1px; border-radius: 6px; }
+  .badge-etoile { position: absolute; top: -6px; right: -4px; z-index: 2; font-size: 14px; text-shadow: 0 0 3px #000; }
+  .btn-etoile { position: absolute; top: -6px; right: -4px; z-index: 2; font-size: 12px; line-height: 1;
+    padding: 1px 3px; background: var(--bg); color: #ffd700; border: 1px solid var(--border); border-radius: 50%; cursor: pointer; opacity: .75; }
+
+  /* ---- Pied ---- */
+  footer#pied { flex: 0 0 auto; display: flex; gap: 8px; justify-content: flex-end; align-items: center;
+    padding: 10px 14px; border-top: 1px solid var(--border); }
+  footer#pied .version { font-size: 10px; color: var(--text-dim); margin-right: auto; }
+
+  /* ---- Modale (zoom + métadonnées) ---- */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: none;
+    align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+  .overlay.ouvert { display: flex; }
+  #zoom-img { max-width: 96vw; max-height: 82vh; object-fit: contain; border-radius: 6px; }
+  .zoom-nav { position: absolute; top: 50%; transform: translateY(-50%); font-size: 40px; color: #fff;
+    background: rgba(0,0,0,.4); border: none; cursor: pointer; padding: 8px 16px; border-radius: 8px; }
+  .zoom-nav.prev { left: 10px; } .zoom-nav.next { right: 10px; }
+  .zoom-fermer { position: absolute; top: 14px; right: 18px; font-size: 26px; color: #fff; background: none; border: none; cursor: pointer; }
+  .zoom-info { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; color: #fff; font-size: 13px; }
+  .boite-meta { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    max-width: 460px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 18px 20px; }
+  .boite-meta h3 { margin: 0 0 10px; font-size: 15px; }
+  .boite-meta table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .boite-meta td { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .boite-meta td.k { color: var(--text-dim); white-space: nowrap; width: 40%; }
+  .msg { font-size: 12px; margin-top: 8px; }
+  .msg.err { color: var(--danger); } .msg.ok { color: #3a9f5f; }
+
+  code.snip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+  pre.exemple { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 11px;
+    overflow-x: auto; color: var(--text); line-height: 1.4; }
+  .reglages label.bloc { display: block; font-size: 12px; color: var(--text-dim); margin: 12px 0 4px; }
+  .reglages input.large { width: 100%; }
+
+  @media (max-width: 430px) {
+    .onglet { font-size: 12px; padding: 10px 3px; gap: 4px; }
+    #panneau-filtres .chips { flex-wrap: nowrap; align-items: stretch; gap: 5px; margin-bottom: 8px !important; }
+    #panneau-filtres .chip { flex: 1 1 0; min-width: 0; }
+    #panneau-filtres .chip-corps { width: 100%; justify-content: center; text-align: center; white-space: normal;
+      flex-wrap: wrap; line-height: 1.1; padding: 6px 4px; font-size: 10.5px; gap: 3px; }
+    #panneau-filtres .puce { display: none; }
+    #panneau-filtres .champs { gap: 4px 8px; margin-bottom: 6px !important; }
+    #panneau-filtres .groupe-score { padding: 4px 8px; gap: 3px 8px; }
+    #panneau-filtres .champs label { font-size: 11px; gap: 4px; }
+    #panneau-filtres .champs select, #panneau-filtres .champs input { padding: 4px 6px; }
+    #panneau-filtres .champs input[type="number"] { width: 54px !important; }
+    #filtres-avances .btn { padding: 6px 10px !important; font-size: 11px !important; }
+  }
+</style>
+</head>
+<body>
+
+<header id="barre">
+  <h1>🗓️ Tri des vignettes par mois</h1>
+  <span id="etat-sync" class="etat-sync">—</span>
+</header>
+
+<main id="zone">
+  <div class="cadre">
+
+    <!-- Onglets -->
+    <div id="onglets" role="tablist">
+      <button type="button" id="onglet-mois" class="onglet actif" onclick="activerOnglet('mois')"><span>📅</span><span class="txt">Mois</span></button>
+      <button type="button" id="onglet-filtres" class="onglet" onclick="activerOnglet('filtres')"><span>🔍</span><span class="txt">Filtres</span><span class="pastille"></span></button>
+      <button type="button" id="onglet-series" class="onglet" onclick="activerOnglet('series')"><span>🎞️</span><span class="txt">Séries</span><span class="pastille"></span></button>
+      <button type="button" id="onglet-albums" class="onglet" onclick="activerOnglet('albums')"><span>📁</span><span class="txt">Albums</span></button>
+      <button type="button" id="onglet-info" class="onglet" onclick="activerOnglet('info')"><span>ℹ️</span><span class="txt">Info</span></button>
+      <button type="button" id="onglet-reglages" class="onglet" onclick="activerOnglet('reglages')"><span>⚙️</span><span class="txt">Réglages</span><span class="pastille"></span></button>
+    </div>
+
+    <!-- Onglet MOIS -->
+    <div id="panneau-mois" class="panneau actif">
+      <div class="champs">
+        <label>Année : <select id="sel-annee" onchange="changerAnnee()"></select></label>
+        <label>Mois : <select id="sel-mois" onchange="rafraichir()"></select></label>
+        <label title="Texte propre à ce mois : remplace « non marqué » dans le nom de l'album correspondant à l'export.">📝 Texte d'album :
+          <input type="text" id="texte-album" maxlength="40" placeholder="(aucun)" oninput="publierTexteAlbum()" style="width:220px;"></label>
+        <button class="btn" onclick="basculerToutVoir()" id="btn-tout-voir">👁️ Tout déplier</button>
+      </div>
+    </div>
+
+    <!-- Onglet FILTRES -->
+    <div id="panneau-filtres" class="panneau">
+      <div class="chips" style="margin-bottom:8px;">
+        <label class="chip"><input type="radio" name="filtre-marque" value="toutes" checked onchange="rafraichir()"><span class="chip-corps">Toutes</span></label>
+        <label class="chip"><input type="radio" name="filtre-marque" value="non_marquees" onchange="rafraichir()"><span class="chip-corps">Non marquées</span></label>
+        <label class="chip"><input type="radio" name="filtre-marque" value="marquees" onchange="rafraichir()"><span class="chip-corps">Marquées</span></label>
+        <label class="chip moins"><input type="radio" name="filtre-marque" value="marquees_moins" onchange="rafraichir()"><span class="chip-corps"><span class="puce moins"></span>Marquées −</span></label>
+        <label class="chip plus"><input type="radio" name="filtre-marque" value="marquees_plus" onchange="rafraichir()"><span class="chip-corps"><span class="puce plus"></span>Marquées +</span></label>
+      </div>
+
+      <button type="button" id="toggle-avances" class="btn toggle-avances" aria-expanded="false" onclick="basculerAvances()">
+        <span id="toggle-avances-fleche">▸</span><span>Filtres avancés</span><span class="pastille"></span></button>
+
+      <div id="filtres-avances" style="display:none;">
+        <div class="champs" style="margin:8px 0 10px;">
+          <label title="N'affiche que les vignettes où cette personne est détectée. Recherche insensible à la casse et aux accents.">👤 Personne :
+            <input type="text" id="filtre-personne" list="personnes-liste" placeholder="(toutes)" oninput="rafraichir()" style="width:180px;"></label>
+          <datalist id="personnes-liste"></datalist>
+        </div>
+        <div class="champs">
+          <div class="groupe-score">
+            <label title="Premier critère de score. Sans borne min/max, il est sans effet.">⭐ Score 1 :
+              <select id="critere1" onchange="rafraichir()"><option value="">(aucun)</option><option value="score">Score global</option><option value="nettete_sujet">Netteté du sujet</option><option value="composition">Composition</option><option value="lumiere">Lumière</option><option value="cadrage">Cadrage</option><option value="echec">Échec</option></select></label>
+            <label>min : <input type="number" id="min1" step="0.05" placeholder="—" oninput="rafraichir()" style="width:72px;"></label>
+            <label>max : <input type="number" id="max1" step="0.05" placeholder="—" oninput="rafraichir()" style="width:72px;"></label>
+          </div>
+          <div class="groupe-score">
+            <label title="Second critère de score, cumulable (ET) avec le premier.">⭐ Score 2 :
+              <select id="critere2" onchange="rafraichir()"><option value="">(aucun)</option><option value="score">Score global</option><option value="nettete_sujet">Netteté du sujet</option><option value="composition">Composition</option><option value="lumiere">Lumière</option><option value="cadrage">Cadrage</option><option value="echec">Échec</option></select></label>
+            <label>min : <input type="number" id="min2" step="0.05" placeholder="—" oninput="rafraichir()" style="width:72px;"></label>
+            <label>max : <input type="number" id="max2" step="0.05" placeholder="—" oninput="rafraichir()" style="width:72px;"></label>
+          </div>
+          <button class="btn" onclick="effacerFiltresAvances()">✖ Effacer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Onglet SÉRIES -->
+    <div id="panneau-series" class="panneau">
+      <div class="champs">
+        <label class="interrupteur"><input type="checkbox" id="series-actif" onchange="changerSeries()"><span>🎞️ Activer le mode Séries</span></label>
+        <label>Écart maximal ≤ <input type="number" id="series-ecart" value="10" min="1" step="1" oninput="changerSeries()" style="width:66px;"> s</label>
+      </div>
+      <p class="aide">Regroupe les vignettes d'un même jour prises à faible intervalle dans un cadre commun, repère la meilleure au score (⭐) et propose de ne garder qu'elle. Rien n'est marqué sans ton clic ; décocher rétablit l'affichage habituel.</p>
+    </div>
+
+    <!-- Onglet ALBUMS -->
+    <div id="panneau-albums" class="panneau">
+      <div class="champs" style="gap:10px;">
+        <button class="btn violet" onclick="exporterAlbumsMois()">📁 Exporter le classement de ce mois</button>
+        <button class="btn violet" onclick="exporterAlbumsAnnee()">📁 Exporter le classement de cette année</button>
+      </div>
+      <p class="aide">L'export écrit un fichier JSON par mois (dossier <code class="snip">albums/</code> du dépôt) listant, pour le mois, les fichiers marqués +, marqués − et non marqués, avec le texte d'album. Rien n'est déplacé ni modifié ; relancer réécrit simplement le fichier. La <em>création réelle</em> des albums dans Photos.app n'est pas possible depuis un navigateur : le classement exporté est destiné à être repris par l'outil qui tourne sur le Mac. Sans dépôt/jeton configuré, le fichier est proposé au téléchargement.</p>
+    </div>
+
+    <!-- Onglet INFO -->
+    <div id="panneau-info" class="panneau">
+      <div id="camembert">
+        <div class="disque"></div>
+        <div class="legende"></div>
+      </div>
+      <div id="resume"></div>
+    </div>
+
+    <!-- Onglet RÉGLAGES -->
+    <div id="panneau-reglages" class="panneau reglages">
+      <label class="bloc">URL du manifeste (index JSON des vignettes)</label>
+      <input type="text" class="large" id="cfg-manifest" placeholder="ex : vignettes/index.json ou https://…/index.json">
+      <label class="bloc">URL de base des images (préfixe des fichiers, si chemins relatifs)</label>
+      <input type="text" class="large" id="cfg-images" placeholder="ex : vignettes/  (laisser vide = dossier du manifeste)">
+      <label class="bloc">Dépôt GitHub (propriétaire/nom) — pour la persistance</label>
+      <input type="text" class="large" id="cfg-repo" placeholder="ex : henri/mes-photos">
+      <div class="champs" style="margin-top:8px;">
+        <label>Branche : <input type="text" id="cfg-branche" value="main" style="width:120px;"></label>
+        <label>Fichier de données : <input type="text" id="cfg-datapath" value="data/tri-marques.json" style="width:220px;"></label>
+      </div>
+      <label class="bloc">Jeton d'accès GitHub (Personal Access Token, portée <code class="snip">contents: write</code>)</label>
+      <input type="password" class="large" id="cfg-token" placeholder="ghp_… (stocké uniquement dans ce navigateur)">
+      <div class="champs" style="margin-top:12px;">
+        <button class="btn" onclick="enregistrerReglages()">💾 Enregistrer</button>
+        <button class="btn" onclick="testerAcces()">🔌 Tester l'accès</button>
+        <button class="btn" onclick="chargerDonneesDepuisGithub(true)">⤓ Recharger les marques du dépôt</button>
+        <button class="btn" onclick="effacerToken()">🗑️ Oublier le jeton</button>
+      </div>
+      <div id="msg-reglages" class="msg"></div>
+      <p class="aide">Le jeton reste dans le <code class="snip">localStorage</code> de ce navigateur uniquement — il n'est jamais publié ni transmis ailleurs qu'à l'API GitHub. Sans jeton, l'application fonctionne en lecture seule et mémorise tes marques localement (elles ne seront pas synchronisées entre appareils).</p>
+      <details style="margin-top:10px;">
+        <summary style="cursor:pointer;font-size:12px;color:var(--text-dim);">Format attendu du manifeste</summary>
+        <pre class="exemple">{
+  "images_base": "vignettes/",           // optionnel
+  "vignettes": [
+    {
+      "uuid": "IMG_0001",                 // identifiant unique
+      "fichier": "IMG_0001.jpg",          // nom (ou URL absolue) de l'image
+      "datetime": "2023-08-04T13:13:07",  // date de prise de vue (ISO)
+      "personnes": ["Hélène", "Paul"],    // optionnel
+      "score": 0.87,                       // optionnel (score global)
+      "scores_detail": {                   // optionnel
+        "nettete_sujet": 0.2, "composition": 0.1,
+        "lumiere": 0.0, "cadrage": 0.05, "echec": 0.0
+      },
+      "hd": true, "icloud": false          // optionnel
+    }
+  ]
+}</pre>
+      </details>
+    </div>
+
+    <!-- Progression -->
+    <div id="progression"><div class="ptexte"></div><div class="pbarre"><div></div></div></div>
+
+    <!-- Séparateur zone photos -->
+    <div class="separateur">🖼️ Vignettes</div>
+
+    <!-- Contenu -->
+    <div id="contenu"><p style="font-size:12px;color:var(--text-dim);">Configure la source dans l'onglet ⚙️ Réglages, puis choisis un mois.</p></div>
+  </div>
+</main>
+
+<footer id="pied">
+  <span class="version">version autonome 2026-07-30.1</span>
+  <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
+  <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
+</footer>
+
+<!-- Overlay zoom -->
+<div class="overlay" id="overlay-zoom" onclick="if(event.target===this)fermerZoom()">
+  <button class="zoom-fermer" onclick="fermerZoom()">✕</button>
+  <button class="zoom-nav prev" onclick="naviguerZoom(-1)">‹</button>
+  <img id="zoom-img" alt="">
+  <button class="zoom-nav next" onclick="naviguerZoom(1)">›</button>
+  <div class="zoom-info" id="zoom-info"></div>
+</div>
+
+<!-- Overlay métadonnées -->
+<div class="overlay" id="overlay-meta" onclick="if(event.target===this)fermerMeta()">
+  <div class="boite-meta">
+    <h3>Métadonnées de la vignette</h3>
+    <table id="meta-table"></table>
+    <div style="text-align:right;margin-top:12px;"><button class="btn" onclick="fermerMeta()">Fermer</button></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   TRI DES VIGNETTES PAR MOIS — version autonome (GitHub Pages)
+   Reprend les fonctionnalités de la vue d'origine, mais :
+   - lit les vignettes depuis un manifeste JSON (URL),
+   - persiste les marques + textes d'album dans un fichier du dépôt via
+     l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
+   ========================================================================= */
+
+const VERSION = "2026-07-30.1";
+const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
+
+// ---- Clés localStorage ----
+const K_CFG    = "tvsa_config";
+const K_TOKEN  = "tvsa_token";
+const K_DATA   = "tvsa_data";      // { marques:{uuid:"plus"|"moins"}, textesAlbums:{"YYYY-MM":str} }
+const K_ETAT   = "tvsa_etat";
+const K_AVANCES = "tvsa_avances";
+const K_ONGLET  = "tvsa_onglet";
+
+// ---- État applicatif ----
+let CONFIG = { manifest: "", images: "", repo: "", branche: "main", datapath: "data/tri-marques.json" };
+let TOKEN = "";
+let DATA = { marques: {}, textesAlbums: {} };
+let githubSha = null;              // sha courant du fichier de données (pour PUT)
+let MANIFEST = [];                 // vignettes brutes enrichies
+let PAR_MOIS = new Map();          // "YYYY-MM" -> [vignettes triées]
+let moisCourant = { jours: {}, total: 0, nbMarquees: 0, repartition: { plus: 0, moins: 0, aucune: 0 }, personnes: [] };
+let joursDeplies = new Set();
+let modeToutVoir = false;
+let zoomListe = [];               // uuids dans l'ordre pour la navigation zoom
+let zoomIndex = 0;
+const designationsSeries = new Map(); // cleSerie -> uuid désigné manuellement
+const registreSeries = new Map();     // cleSerie -> [uuids]
+let sauveDiffere = null;
+
+// ---- Utilitaires ----
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function sansAccent(s) { return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(); }
+function pad2(n) { return String(n).padStart(2, "0"); }
+function heureEnSecondes(h) { if (!h) return null; const m = String(h).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/); if (!m) return null; return (+m[1]) * 3600 + (+m[2]) * 60 + (+(m[3] || 0)); }
+function etatSync(txt, cls) { const e = document.getElementById("etat-sync"); e.textContent = txt; e.className = "etat-sync" + (cls ? " " + cls : ""); }
+
+// ---- Config / token (localStorage) ----
+function chargerConfig() {
+  try { CONFIG = Object.assign(CONFIG, JSON.parse(localStorage.getItem(K_CFG)) || {}); } catch (e) {}
+  try { TOKEN = localStorage.getItem(K_TOKEN) || ""; } catch (e) {}
+  document.getElementById("cfg-manifest").value = CONFIG.manifest || "";
+  document.getElementById("cfg-images").value = CONFIG.images || "";
+  document.getElementById("cfg-repo").value = CONFIG.repo || "";
+  document.getElementById("cfg-branche").value = CONFIG.branche || "main";
+  document.getElementById("cfg-datapath").value = CONFIG.datapath || "data/tri-marques.json";
+  document.getElementById("cfg-token").value = TOKEN || "";
+}
+function enregistrerReglages() {
+  CONFIG.manifest = document.getElementById("cfg-manifest").value.trim();
+  CONFIG.images   = document.getElementById("cfg-images").value.trim();
+  CONFIG.repo     = document.getElementById("cfg-repo").value.trim();
+  CONFIG.branche  = document.getElementById("cfg-branche").value.trim() || "main";
+  CONFIG.datapath = document.getElementById("cfg-datapath").value.trim() || "data/tri-marques.json";
+  TOKEN           = document.getElementById("cfg-token").value.trim();
+  try { localStorage.setItem(K_CFG, JSON.stringify(CONFIG)); } catch (e) {}
+  try { TOKEN ? localStorage.setItem(K_TOKEN, TOKEN) : localStorage.removeItem(K_TOKEN); } catch (e) {}
+  msgReglages("Réglages enregistrés.", "ok");
+  demarrer();
+}
+function effacerToken() {
+  TOKEN = ""; document.getElementById("cfg-token").value = "";
+  try { localStorage.removeItem(K_TOKEN); } catch (e) {}
+  msgReglages("Jeton oublié (lecture seule, marques locales uniquement).", "ok");
+  majEtatSync();
+}
+function msgReglages(t, cls) { const m = document.getElementById("msg-reglages"); m.textContent = t; m.className = "msg " + (cls || ""); }
+
+// ---- Base URL des images ----
+function baseImages() {
+  if (CONFIG.images) return CONFIG.images.replace(/\/?$/, "/");
+  // sinon : dossier du manifeste
+  if (CONFIG.manifest) { const i = CONFIG.manifest.lastIndexOf("/"); if (i >= 0) return CONFIG.manifest.slice(0, i + 1); }
+  return "";
+}
+function urlImage(v) {
+  if (/^https?:\/\//i.test(v.fichier) || v.fichier.startsWith("data:")) return v.fichier;
+  return baseImages() + v.fichier;
+}
+
+/* =========================================================================
+   CHARGEMENT DU MANIFESTE
+   ========================================================================= */
+async function chargerManifeste() {
+  if (!CONFIG.manifest) { document.getElementById("contenu").innerHTML = `<p style="font-size:12px;color:var(--text-dim);">Aucun manifeste configuré (onglet ⚙️ Réglages).</p>`; return false; }
+  try {
+    const res = await fetch(CONFIG.manifest, { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const j = await res.json();
+    if (CONFIG.images === "" && j.images_base) CONFIG.images = j.images_base;
+    const brut = Array.isArray(j) ? j : (j.vignettes || []);
+    MANIFEST = brut.map(enrichirVignette).filter(v => v);
+    indexerParMois();
+    return true;
+  } catch (e) {
+    document.getElementById("contenu").innerHTML = `<p class="msg err">Impossible de lire le manifeste : ${esc(e.message)}.</p>`;
+    return false;
+  }
+}
+
+function enrichirVignette(x) {
+  if (!x || !x.fichier) return null;
+  const uuid = String(x.uuid || x.fichier);
+  const dt = x.datetime ? new Date(x.datetime) : null;
+  let annee = null, mois = null, jour = null, heure = null;
+  if (dt && !isNaN(dt)) {
+    annee = dt.getFullYear(); mois = dt.getMonth() + 1; jour = dt.getDate();
+    heure = pad2(dt.getHours()) + ":" + pad2(dt.getMinutes()) + ":" + pad2(dt.getSeconds());
+  }
+  const personnes = (x.personnes || []).filter(p => p && !/^_?unknown_?$/i.test(p));
+  const scoresDetail = x.scores_detail || {};
+  const aScore = typeof x.score === "number";
+  const aDetail = scoresDetail && Object.keys(scoresDetail).length > 0;
+  let meta;
+  if (personnes.length && aScore && aDetail) meta = "complete";
+  else if (personnes.length || aScore || aDetail) meta = "partielle";
+  else meta = "aucune";
+  return {
+    uuid, fichier: x.fichier, datetime: x.datetime || null,
+    annee, mois, jour, heure, secondes: heureEnSecondes(heure),
+    personnes, score: aScore ? x.score : null, scores_detail: scoresDetail,
+    hd: !!x.hd, icloud: !!x.icloud, meta
+  };
+}
+
+function cleMois(a, m) { return a + "-" + pad2(m); }
+
+function indexerParMois() {
+  PAR_MOIS = new Map();
+  for (const v of MANIFEST) {
+    if (v.annee == null || v.mois == null) continue;
+    const c = cleMois(v.annee, v.mois);
+    if (!PAR_MOIS.has(c)) PAR_MOIS.set(c, []);
+    PAR_MOIS.get(c).push(v);
+  }
+  for (const arr of PAR_MOIS.values()) arr.sort((a, b) => (a.datetime || "").localeCompare(b.datetime || ""));
+  peuplerSelecteurs();
+}
+
+function peuplerSelecteurs() {
+  const annees = [...new Set([...PAR_MOIS.keys()].map(c => c.slice(0, 4)))].sort();
+  const selA = document.getElementById("sel-annee");
+  const etat = chargerEtat();
+  const anneePref = etat && etat.annee ? String(etat.annee) : (annees[annees.length - 1] || "");
+  selA.innerHTML = annees.map(a => `<option value="${a}"${a === anneePref ? " selected" : ""}>${a}</option>`).join("");
+  peuplerMois(anneePref, etat && etat.mois ? etat.mois : null);
+}
+
+function peuplerMois(annee, moisPref) {
+  const NOMS = ["", "janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+  const mois = [...PAR_MOIS.keys()].filter(c => c.startsWith(annee + "-")).map(c => +c.slice(5)).sort((a, b) => a - b);
+  const selM = document.getElementById("sel-mois");
+  const pref = moisPref && mois.includes(+moisPref) ? +moisPref : (mois[0] || "");
+  selM.innerHTML = mois.map(m => `<option value="${m}"${m === pref ? " selected" : ""}>${NOMS[m]} (${pad2(m)})</option>`).join("");
+}
+
+function changerAnnee() { peuplerMois(document.getElementById("sel-annee").value, null); rafraichir(); }
+
+/* =========================================================================
+   PERSISTANCE (GitHub Contents API + repli localStorage)
+   ========================================================================= */
+function majEtatSync() {
+  if (!CONFIG.repo || !TOKEN) etatSync("Marques locales (pas de synchro)", "");
+  else etatSync("Synchronisé avec le dépôt", "ok");
+}
+function chargerDonneesLocales() { try { DATA = Object.assign({ marques: {}, textesAlbums: {} }, JSON.parse(localStorage.getItem(K_DATA)) || {}); } catch (e) {} }
+function sauverDonneesLocales() { try { localStorage.setItem(K_DATA, JSON.stringify(DATA)); } catch (e) {} }
+
+function apiGithub(path) { return `https://api.github.com/repos/${CONFIG.repo}/contents/${path}?ref=${encodeURIComponent(CONFIG.branche)}`; }
+function entetesGithub() { return { "Authorization": "Bearer " + TOKEN, "Accept": "application/vnd.github+json" }; }
+
+async function chargerDonneesDepuisGithub(verbeux) {
+  if (!CONFIG.repo || !TOKEN) { majEtatSync(); if (verbeux) msgReglages("Dépôt ou jeton manquant.", "err"); return; }
+  try {
+    const res = await fetch(apiGithub(CONFIG.datapath), { headers: entetesGithub(), cache: "no-store" });
+    if (res.status === 404) { githubSha = null; if (verbeux) msgReglages("Aucun fichier de données pour l'instant (il sera créé au premier marquage).", "ok"); majEtatSync(); return; }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const j = await res.json();
+    githubSha = j.sha;
+    const contenu = JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g, "")))));
+    DATA = Object.assign({ marques: {}, textesAlbums: {} }, contenu);
+    sauverDonneesLocales();
+    majEtatSync();
+    if (verbeux) msgReglages("Marques rechargées depuis le dépôt.", "ok");
+    if (MANIFEST.length) rafraichir();
+  } catch (e) { majEtatSync(); if (verbeux) msgReglages("Lecture GitHub impossible : " + e.message, "err"); }
+}
+
+function planifierSauvegarde() {
+  sauverDonneesLocales();
+  if (!CONFIG.repo || !TOKEN) return;
+  clearTimeout(sauveDiffere);
+  sauveDiffere = setTimeout(pousserDonneesVersGithub, 800);
+}
+
+async function pousserDonneesVersGithub() {
+  if (!CONFIG.repo || !TOKEN) return;
+  etatSync("Enregistrement…", "");
+  const corps = {
+    message: "Mise à jour des marques du tri (" + new Date().toISOString() + ")",
+    content: btoa(unescape(encodeURIComponent(JSON.stringify(Object.assign({}, DATA, { maj: new Date().toISOString() }), null, 2)))),
+    branch: CONFIG.branche
+  };
+  if (githubSha) corps.sha = githubSha;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${CONFIG.repo}/contents/${CONFIG.datapath}`, {
+      method: "PUT", headers: Object.assign(entetesGithub(), { "Content-Type": "application/json" }), body: JSON.stringify(corps)
+    });
+    if (res.status === 409) { await chargerShaCourant(); return pousserDonneesVersGithub(); }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const j = await res.json();
+    githubSha = j.content ? j.content.sha : githubSha;
+    majEtatSync();
+  } catch (e) { etatSync("Échec d'enregistrement : " + e.message, "err"); }
+}
+async function chargerShaCourant() {
+  try { const r = await fetch(apiGithub(CONFIG.datapath), { headers: entetesGithub(), cache: "no-store" }); if (r.ok) { const j = await r.json(); githubSha = j.sha; } } catch (e) {}
+}
+
+async function testerAcces() {
+  if (!CONFIG.repo || !TOKEN) { msgReglages("Renseigne le dépôt et le jeton d'abord.", "err"); return; }
+  try {
+    const res = await fetch(`https://api.github.com/repos/${CONFIG.repo}`, { headers: entetesGithub() });
+    if (!res.ok) throw new Error("HTTP " + res.status + (res.status === 404 ? " (dépôt introuvable ou jeton sans accès)" : ""));
+    const j = await res.json();
+    msgReglages("Accès OK au dépôt « " + j.full_name + " » (écriture " + (j.permissions && j.permissions.push ? "autorisée" : "NON autorisée") + ").", j.permissions && j.permissions.push ? "ok" : "err");
+  } catch (e) { msgReglages("Échec : " + e.message, "err"); }
+}
+
+/* =========================================================================
+   LECTURE DES FILTRES
+   ========================================================================= */
+function lireFiltres() {
+  const val = id => { const e = document.getElementById(id); return e ? e.value.trim() : ""; };
+  const marque = (document.querySelector('input[name="filtre-marque"]:checked') || {}).value || "toutes";
+  return {
+    marque,
+    personne: val("filtre-personne"),
+    critere1: val("critere1"), min1: val("min1"), max1: val("max1"),
+    critere2: val("critere2"), min2: val("min2"), max2: val("max2")
+  };
+}
+function filtresAvancesActifs() {
+  const f = lireFiltres();
+  return !!f.personne || !!(f.critere1 && (f.min1 !== "" || f.max1 !== "")) || !!(f.critere2 && (f.min2 !== "" || f.max2 !== ""));
+}
+function valeurCritere(v, critere) { return critere === "score" ? v.score : (v.scores_detail ? v.scores_detail[critere] : undefined); }
+function passeScore(v, critere, mn, mx) {
+  if (!critere || (mn === "" && mx === "")) return true;
+  const val = valeurCritere(v, critere);
+  if (typeof val !== "number") return false;
+  if (mn !== "" && val < parseFloat(mn)) return false;
+  if (mx !== "" && val > parseFloat(mx)) return false;
+  return true;
+}
+function passeFiltres(v, f) {
+  const marque = DATA.marques[v.uuid] || null;
+  if (f.marque === "non_marquees" && marque) return false;
+  if (f.marque === "marquees" && !marque) return false;
+  if (f.marque === "marquees_moins" && marque !== "moins") return false;
+  if (f.marque === "marquees_plus" && marque !== "plus") return false;
+  if (f.personne) {
+    const q = sansAccent(f.personne);
+    if (!v.personnes.some(p => sansAccent(p).includes(q))) return false;
+  }
+  if (!passeScore(v, f.critere1, f.min1, f.max1)) return false;
+  if (!passeScore(v, f.critere2, f.min2, f.max2)) return false;
+  return true;
+}
+
+/* =========================================================================
+   CONSTRUCTION DU MOIS + RENDU
+   ========================================================================= */
+function rafraichir() {
+  const annee = document.getElementById("sel-annee").value;
+  const mois = document.getElementById("sel-mois").value;
+  const conteneur = document.getElementById("contenu");
+  if (!annee || !mois) { conteneur.innerHTML = `<p style="font-size:12px;color:var(--text-dim);">Aucun mois sélectionné.</p>`; return; }
+  const liste = PAR_MOIS.get(cleMois(+annee, +mois)) || [];
+  const f = lireFiltres();
+
+  // Répartition sur TOUT le mois (indépendante du filtre)
+  let plus = 0, moins = 0;
+  const personnesSet = new Set();
+  for (const v of liste) {
+    const mk = DATA.marques[v.uuid];
+    if (mk === "plus") plus++; else if (mk === "moins") moins++;
+    v.personnes.forEach(p => personnesSet.add(p));
+  }
+  const aucune = liste.length - plus - moins;
+
+  // Filtrage + regroupement par jour
+  const jours = {};
+  let total = 0;
+  for (const v of liste) {
+    if (!passeFiltres(v, f)) continue;
+    const j = String(v.jour);
+    (jours[j] = jours[j] || []).push(v);
+    total++;
+  }
+  moisCourant = { jours, total, nbMarquees: plus + moins, repartition: { plus, moins, aucune }, personnes: [...personnesSet].sort() };
+
+  peuplerContenu();
+  majResume();
+  majCamembert();
+  majSuggestionsPersonnes();
+  majPastilles();
+  chargerTexteAlbumDansChamp();
+  sauvegarderEtat();
+}
+
+function peuplerContenu() {
+  const conteneur = document.getElementById("contenu");
+  registreSeries.clear();
+  const cles = Object.keys(moisCourant.jours).sort((a, b) => +a - +b);
+  if (!cles.length) { conteneur.innerHTML = `<p style="font-size:12px;color:var(--text-dim);">Aucune vignette pour ce mois avec ce filtre.</p>`; return; }
+  let html = "";
+  for (const jour of cles) {
+    const vignettes = moisCourant.jours[jour];
+    const nbMarquees = vignettes.filter(v => DATA.marques[v.uuid]).length;
+    const ouvert = modeToutVoir || joursDeplies.has(jour);
+    const grille = seriesActif() ? construireGrilleSeries(jour, vignettes) : vignettes.map(carte).join("");
+    html += `<details class="jour" data-jour="${jour}"${ouvert ? " open" : ""}>
+      <summary onclick="basculerJour('${jour}', this.parentElement)">Jour ${jour} — ${vignettes.length} vignette(s)${nbMarquees ? `, dont <strong>${nbMarquees}</strong> marquée(s)` : ""}</summary>
+      <div class="grille">${grille}</div></details>`;
+  }
+  conteneur.innerHTML = html;
+}
+
+function carte(v) {
+  const mk = DATA.marques[v.uuid] || null;
+  const cls = mk === "plus" ? " plus" : mk === "moins" ? " moins" : "";
+  const couleurInfo = v.meta === "complete" ? "#3a9f5f" : v.meta === "partielle" ? "#ff9500" : v.meta === "aucune" ? "#ff3b30" : "var(--border)";
+  return `<div class="carte${cls}" data-uuid="${esc(v.uuid)}">
+    <img src="${esc(urlImage(v))}" loading="lazy" alt="${esc(v.heure || "")}" onclick="ouvrirZoom('${esc(v.uuid)}')">
+    <div class="heure">${esc(v.heure || "—")}</div>
+    <div class="rang">
+      <button class="${mk === "moins" ? "on-moins" : ""}" onclick="basculerMarque('${esc(v.uuid)}','moins')">${mk === "moins" ? "✓ Marquée −" : "☐ Marquer −"}</button>
+      <button class="${mk === "plus" ? "on-plus" : ""}" onclick="basculerMarque('${esc(v.uuid)}','plus')">${mk === "plus" ? "✓ Marquée +" : "☐ Marquer +"}</button>
+    </div>
+    <div class="rang rang2">
+      <button onclick="ouvrirZoom('${esc(v.uuid)}')" title="Agrandir la photo">🔍 Zoom</button>
+      <button onclick="afficherMetadonnees('${esc(v.uuid)}')" title="Voir les métadonnées" style="border:2px solid ${couleurInfo};">ℹ️</button>
+    </div>
+  </div>`;
+}
+
+/* ---- Mode Séries ---- */
+function seriesActif() { const e = document.getElementById("series-actif"); return !!(e && e.checked); }
+function ecartSeries() { const e = document.getElementById("series-ecart"); const n = e ? parseInt(e.value, 10) : 10; return isNaN(n) || n < 1 ? 10 : n; }
+
+function decouperEnSeries(vignettes, ecartMax) {
+  const segs = []; let cur = []; let prec = null;
+  for (const v of vignettes) {
+    const t = v.secondes;
+    if (cur.length && prec !== null && t !== null && t - prec >= 0 && t - prec <= ecartMax) cur.push(v);
+    else { if (cur.length) segs.push(cur); cur = [v]; }
+    prec = t;
+  }
+  if (cur.length) segs.push(cur);
+  return segs;
+}
+function meilleureDeSerie(cle, serie) {
+  const manuel = designationsSeries.get(cle);
+  if (manuel && serie.some(v => v.uuid === manuel)) return manuel;
+  let top = null;
+  for (const v of serie) if (typeof v.score === "number" && (top === null || v.score > top.score)) top = v;
+  return top ? top.uuid : null;
+}
+function construireGrilleSeries(jour, vignettes) {
+  const ecart = ecartSeries(); let html = "";
+  for (const seg of decouperEnSeries(vignettes, ecart)) {
+    if (seg.length < 2) { html += seg.map(carte).join(""); continue; }
+    const cle = jour + ":" + seg[0].uuid;
+    registreSeries.set(cle, seg.map(v => v.uuid));
+    const uuidTop = meilleureDeSerie(cle, seg);
+    const topV = seg.find(v => v.uuid === uuidTop);
+    const scoreTop = topV && typeof topV.score === "number" ? topV.score.toFixed(4) : null;
+    const cellules = seg.map(v => {
+      const designee = v.uuid === uuidTop;
+      const insigne = designee
+        ? `<span class="badge-etoile" title="Meilleure photo de la série">⭐</span>`
+        : `<button class="btn-etoile" title="Désigner cette photo comme la meilleure" onclick="designerMeilleure('${esc(cle)}','${esc(v.uuid)}')">☆</button>`;
+      return `<div class="cellule${designee ? " designee" : ""}">${carte(v)}${insigne}</div>`;
+    }).join("");
+    html += `<div class="serie">
+      <div class="entete">
+        <span>🎞️ Série de <strong>${seg.length}</strong> photos (écart ≤ ${ecart} s)</span>
+        ${uuidTop
+          ? `<button class="btn violet" onclick="garderMeilleure('${esc(cle)}')">⭐ Garder la meilleure${scoreTop ? ` (score ${scoreTop})` : ""}</button>`
+          : `<span>— aucune photo scorée : désigne la meilleure avec ☆ —</span>`}
+        <button class="btn" style="background:var(--accent);color:#fff;border-color:var(--accent);" onclick="marquerMoinsSerie('${esc(cle)}')">− Tout marquer −</button>
+      </div>
+      <div class="sous-grille">${cellules}</div>
+    </div>`;
+  }
+  return html;
+}
+function designerMeilleure(cle, uuid) { designationsSeries.set(cle, uuid); peuplerContenu(); }
+async function garderMeilleure(cle) {
+  const uuids = registreSeries.get(cle); if (!uuids || !uuids.length) return;
+  let top = designationsSeries.get(cle);
+  if (!top || !uuids.includes(top)) { const serie = MANIFEST.filter(v => uuids.includes(v.uuid)); top = meilleureDeSerie(cle, serie); }
+  if (!top) return;
+  for (const uuid of uuids) { const cible = uuid === top ? "plus" : "moins"; if ((DATA.marques[uuid] || null) !== cible) poserMarque(uuid, cible); }
+  finaliserMarquage();
+}
+function marquerMoinsSerie(cle) {
+  const uuids = registreSeries.get(cle); if (!uuids || !uuids.length) return;
+  for (const uuid of uuids) if ((DATA.marques[uuid] || null) !== "moins") poserMarque(uuid, "moins");
+  finaliserMarquage();
+}
+function changerSeries() { sauvegarderEtat(); peuplerContenu(); majPastilles(); }
+
+/* =========================================================================
+   MARQUAGE
+   ========================================================================= */
+function poserMarque(uuid, type) {
+  const actuel = DATA.marques[uuid] || null;
+  if (actuel === type) delete DATA.marques[uuid];   // re-clic = retrait
+  else DATA.marques[uuid] = type;                   // pose / remplace
+}
+function basculerMarque(uuid, type) { poserMarque(uuid, type); finaliserMarquage(); }
+
+function finaliserMarquage() {
+  // recompte le mois courant sans refiltrer entièrement : on redessine.
+  planifierSauvegarde();
+  const filtreActifSurMarque = (lireFiltres().marque !== "toutes");
+  // Si un filtre par marque est actif, un changement peut faire (dis)paraître
+  // des cartes : on refiltre. Sinon, redraw local (rapide) suffit.
+  rafraichir();
+}
+
+/* =========================================================================
+   RÉSUMÉ / CAMEMBERT / SUGGESTIONS
+   ========================================================================= */
+function decrireFiltresAvances() {
+  const f = lireFiltres(); const bouts = [];
+  if (f.personne) bouts.push(`personne « ${esc(f.personne)} »`);
+  for (const [c, mn, mx] of [[f.critere1, f.min1, f.max1], [f.critere2, f.min2, f.max2]]) {
+    if (c && (mn !== "" || mx !== "")) bouts.push(`${esc(c)} ∈ [${mn === "" ? "−∞" : esc(mn)} ; ${mx === "" ? "+∞" : esc(mx)}]`);
+  }
+  return bouts.length ? ` — filtres : ${bouts.join(", ")}` : "";
+}
+function majResume() {
+  document.getElementById("resume").innerHTML =
+    `${moisCourant.total.toLocaleString("fr-FR")} vignette(s) affichée(s) — <strong>${moisCourant.nbMarquees.toLocaleString("fr-FR")}</strong> marquée(s) sur l'ensemble de ce mois.${decrireFiltresAvances()}`;
+}
+function majCamembert() {
+  const zone = document.getElementById("camembert");
+  const disque = zone.querySelector(".disque");
+  const legende = zone.querySelector(".legende");
+  const r = moisCourant.repartition;
+  const total = r.plus + r.moins + r.aucune;
+  if (!total) { zone.style.display = "none"; return; }
+  zone.style.display = "flex";
+  const pP = 100 * r.plus / total, pM = 100 * r.moins / total;
+  disque.style.background = `conic-gradient(var(--vert) 0% ${pP}%, var(--accent) ${pP}% ${pP + pM}%, #555b66 ${pP + pM}% 100%)`;
+  const pct = n => `${Math.round(100 * n / total)} %`;
+  legende.innerHTML =
+    `<span style="color:var(--vert);">■</span> marquées + : ${r.plus.toLocaleString("fr-FR")} (${pct(r.plus)})<br>` +
+    `<span style="color:var(--accent);">■</span> marquées − : ${r.moins.toLocaleString("fr-FR")} (${pct(r.moins)})<br>` +
+    `<span style="color:#8b909c;">■</span> non marquées : ${r.aucune.toLocaleString("fr-FR")} (${pct(r.aucune)})`;
+}
+function majSuggestionsPersonnes() {
+  document.getElementById("personnes-liste").innerHTML = moisCourant.personnes.map(p => `<option value="${esc(p)}">`).join("");
+}
+
+/* =========================================================================
+   ONGLETS / FILTRES AVANCÉS / PASTILLES
+   ========================================================================= */
+const ONGLETS = ["mois", "filtres", "series", "albums", "info", "reglages"];
+function activerOnglet(nom) {
+  if (!ONGLETS.includes(nom)) nom = "mois";
+  for (const o of ONGLETS) {
+    document.getElementById("onglet-" + o).classList.toggle("actif", o === nom);
+    document.getElementById("panneau-" + o).classList.toggle("actif", o === nom);
+  }
+  try { localStorage.setItem(K_ONGLET, nom); } catch (e) {}
+}
+function basculerAvances() {
+  const zone = document.getElementById("filtres-avances");
+  const ouvert = zone.style.display !== "none";
+  try { localStorage.setItem(K_AVANCES, ouvert ? "0" : "1"); } catch (e) {}
+  appliquerEtatAvances();
+}
+function appliquerEtatAvances() {
+  const zone = document.getElementById("filtres-avances");
+  const btn = document.getElementById("toggle-avances");
+  const fleche = document.getElementById("toggle-avances-fleche");
+  let ouvert = false; try { ouvert = localStorage.getItem(K_AVANCES) === "1"; } catch (e) {}
+  zone.style.display = ouvert ? "block" : "none";
+  btn.setAttribute("aria-expanded", ouvert ? "true" : "false");
+  fleche.textContent = ouvert ? "▾" : "▸";
+}
+function majPastilles() {
+  const actif = filtresAvancesActifs();
+  document.getElementById("onglet-filtres").classList.toggle("a-filtre", actif);
+  document.getElementById("toggle-avances").classList.toggle("a-filtre", actif);
+  document.getElementById("onglet-series").classList.toggle("a-filtre", seriesActif());
+  const cfgOk = CONFIG.manifest && (!CONFIG.repo || TOKEN);
+  document.getElementById("onglet-reglages").classList.toggle("a-filtre", !CONFIG.manifest);
+}
+function effacerFiltresAvances() {
+  ["filtre-personne", "critere1", "min1", "max1", "critere2", "min2", "max2"].forEach(id => { const e = document.getElementById(id); if (e) e.value = ""; });
+  rafraichir();
+}
+
+/* =========================================================================
+   DÉPLIAGE / TOUT VOIR / AGRANDIR
+   ========================================================================= */
+function basculerJour(jour, details) {
+  // details.open reflète l'état APRÈS le clic natif
+  setTimeout(() => { if (details.open) joursDeplies.add(String(jour)); else joursDeplies.delete(String(jour)); sauvegarderEtat(); }, 0);
+}
+function basculerToutVoir() {
+  modeToutVoir = !modeToutVoir;
+  document.getElementById("btn-tout-voir").textContent = modeToutVoir ? "↩️ Revenir à ma sélection" : "👁️ Tout déplier";
+  peuplerContenu(); sauvegarderEtat();
+}
+let agrandi = false;
+function basculerAgrandissement() {
+  agrandi = !agrandi;
+  document.querySelector(".cadre").querySelectorAll("#onglets, .panneau, .separateur, #progression").forEach(el => {
+    el.style.display = agrandi ? "none" : "";
+  });
+  // rétablir l'onglet actif quand on réduit
+  if (!agrandi) { restaurerOnglet(); appliquerEtatAvances(); }
+  document.getElementById("btn-agrandir").textContent = agrandi ? "⛶ Réduire" : "⛶ Agrandir";
+}
+function revenirEnHaut() { const c = document.getElementById("contenu"); c.scrollTo({ top: 0, behavior: "smooth" }); }
+
+/* =========================================================================
+   TEXTE D'ALBUM
+   ========================================================================= */
+function moisCleCourante() { const a = document.getElementById("sel-annee").value, m = document.getElementById("sel-mois").value; return a && m ? cleMois(+a, +m) : null; }
+function publierTexteAlbum() {
+  const c = moisCleCourante(); if (!c) return;
+  const t = document.getElementById("texte-album").value.trim();
+  if (t) DATA.textesAlbums[c] = t; else delete DATA.textesAlbums[c];
+  planifierSauvegarde();
+}
+function chargerTexteAlbumDansChamp() { const c = moisCleCourante(); document.getElementById("texte-album").value = (c && DATA.textesAlbums[c]) || ""; }
+
+/* =========================================================================
+   EXPORT DES ALBUMS (classement)
+   ========================================================================= */
+function classementDuMois(cle) {
+  const liste = PAR_MOIS.get(cle) || [];
+  const plus = [], moins = [], non = [];
+  for (const v of liste) { const mk = DATA.marques[v.uuid]; (mk === "plus" ? plus : mk === "moins" ? moins : non).push(v.fichier); }
+  return { mois: cle, texte_album: DATA.textesAlbums[cle] || "", "marque_plus": plus, "marque_moins": moins, "non_marque": non };
+}
+async function ecrireFichierGithub(chemin, objet, message) {
+  const contenu = btoa(unescape(encodeURIComponent(JSON.stringify(objet, null, 2))));
+  // récupère le sha éventuel
+  let sha = null;
+  try { const r = await fetch(apiGithub(chemin), { headers: entetesGithub(), cache: "no-store" }); if (r.ok) { const j = await r.json(); sha = j.sha; } } catch (e) {}
+  const corps = { message, content: contenu, branch: CONFIG.branche }; if (sha) corps.sha = sha;
+  const res = await fetch(`https://api.github.com/repos/${CONFIG.repo}/contents/${chemin}`, { method: "PUT", headers: Object.assign(entetesGithub(), { "Content-Type": "application/json" }), body: JSON.stringify(corps) });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+}
+function telechargerJson(nom, objet) {
+  const blob = new Blob([JSON.stringify(objet, null, 2)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom; a.click(); URL.revokeObjectURL(a.href);
+}
+async function exporterAlbumsMois() {
+  const cle = moisCleCourante(); if (!cle) return;
+  const cl = classementDuMois(cle);
+  if (CONFIG.repo && TOKEN) {
+    etatSync("Export…", "");
+    try { await ecrireFichierGithub(`albums/${cle}.json`, cl, "Export classement " + cle); etatSync("Classement " + cle + " exporté dans albums/", "ok"); }
+    catch (e) { etatSync("Échec export : " + e.message, "err"); telechargerJson(`album-${cle}.json`, cl); }
+  } else telechargerJson(`album-${cle}.json`, cl);
+}
+async function exporterAlbumsAnnee() {
+  const annee = document.getElementById("sel-annee").value; if (!annee) return;
+  const cles = [...PAR_MOIS.keys()].filter(c => c.startsWith(annee + "-")).sort();
+  const prog = document.getElementById("progression"); const barre = prog.querySelector(".pbarre > div"); const txt = prog.querySelector(".ptexte");
+  prog.style.display = "block";
+  const global = { annee, mois: {} };
+  for (let i = 0; i < cles.length; i++) {
+    const cl = classementDuMois(cles[i]); global.mois[cles[i]] = cl;
+    txt.textContent = `Export ${cles[i]} (${i + 1}/${cles.length})`; barre.style.width = (100 * (i + 1) / cles.length) + "%";
+    if (CONFIG.repo && TOKEN) { try { await ecrireFichierGithub(`albums/${cles[i]}.json`, cl, "Export classement " + cles[i]); } catch (e) {} }
+  }
+  if (CONFIG.repo && TOKEN) { try { await ecrireFichierGithub(`albums/annee-${annee}.json`, global, "Export classement année " + annee); etatSync("Année " + annee + " exportée dans albums/", "ok"); } catch (e) { etatSync("Échec export année : " + e.message, "err"); } }
+  else telechargerJson(`album-annee-${annee}.json`, global);
+  setTimeout(() => { prog.style.display = "none"; barre.style.width = "0%"; }, 800);
+}
+
+/* =========================================================================
+   ZOOM + MÉTADONNÉES
+   ========================================================================= */
+function vignetteParUuid(uuid) { return MANIFEST.find(v => v.uuid === uuid) || null; }
+function listeAffichee() { const out = []; for (const j of Object.keys(moisCourant.jours).sort((a, b) => +a - +b)) for (const v of moisCourant.jours[j]) out.push(v.uuid); return out; }
+function ouvrirZoom(uuid) {
+  zoomListe = listeAffichee(); zoomIndex = Math.max(0, zoomListe.indexOf(uuid));
+  majZoom(); document.getElementById("overlay-zoom").classList.add("ouvert");
+}
+function majZoom() {
+  const v = vignetteParUuid(zoomListe[zoomIndex]); if (!v) return;
+  document.getElementById("zoom-img").src = urlImage(v);
+  const mk = DATA.marques[v.uuid]; const etiquette = mk === "plus" ? " · marquée +" : mk === "moins" ? " · marquée −" : "";
+  document.getElementById("zoom-info").textContent = `${v.heure || ""}${etiquette}  (${zoomIndex + 1}/${zoomListe.length})`;
+}
+function naviguerZoom(d) { if (!zoomListe.length) return; zoomIndex = (zoomIndex + d + zoomListe.length) % zoomListe.length; majZoom(); }
+function fermerZoom() { document.getElementById("overlay-zoom").classList.remove("ouvert"); }
+
+function afficherMetadonnees(uuid) {
+  const v = vignetteParUuid(uuid); if (!v) return;
+  const mk = DATA.marques[uuid] || "aucune";
+  const lignes = [
+    ["Fichier", esc(v.fichier)],
+    ["Date de prise de vue", esc(v.datetime || "—")],
+    ["Heure", esc(v.heure || "—")],
+    ["Marque", mk === "plus" ? "+ (retenue)" : mk === "moins" ? "− (écartée)" : "non marquée"],
+    ["Personnes", v.personnes.length ? esc(v.personnes.join(", ")) : "—"],
+    ["Score global", typeof v.score === "number" ? v.score.toFixed(4) : "—"],
+    ["Métadonnées", v.meta],
+    ["HD dispo.", v.hd ? "oui" : "non"],
+    ["iCloud", v.icloud ? "oui" : "non"]
+  ];
+  for (const c of CRITERES) if (c !== "score" && v.scores_detail && typeof v.scores_detail[c] === "number") lignes.push([c, v.scores_detail[c].toFixed(4)]);
+  document.getElementById("meta-table").innerHTML = lignes.map(([k, val]) => `<tr><td class="k">${k}</td><td>${val}</td></tr>`).join("");
+  document.getElementById("overlay-meta").classList.add("ouvert");
+}
+function fermerMeta() { document.getElementById("overlay-meta").classList.remove("ouvert"); }
+
+document.addEventListener("keydown", e => {
+  if (document.getElementById("overlay-zoom").classList.contains("ouvert")) {
+    if (e.key === "ArrowLeft") naviguerZoom(-1);
+    else if (e.key === "ArrowRight") naviguerZoom(1);
+    else if (e.key === "Escape") fermerZoom();
+  } else if (document.getElementById("overlay-meta").classList.contains("ouvert") && e.key === "Escape") fermerMeta();
+});
+
+/* =========================================================================
+   PERSISTANCE DE L'ÉTAT UI
+   ========================================================================= */
+function sauvegarderEtat() {
+  try {
+    const f = lireFiltres();
+    localStorage.setItem(K_ETAT, JSON.stringify({
+      annee: +document.getElementById("sel-annee").value || null,
+      mois: +document.getElementById("sel-mois").value || null,
+      marque: f.marque, personne: f.personne,
+      critere1: f.critere1, min1: f.min1, max1: f.max1,
+      critere2: f.critere2, min2: f.min2, max2: f.max2,
+      seriesActif: seriesActif(), seriesEcart: ecartSeries(),
+      joursDeplies: [...joursDeplies], toutVoir: modeToutVoir
+    }));
+  } catch (e) {}
+}
+function chargerEtat() { try { return JSON.parse(localStorage.getItem(K_ETAT)) || null; } catch (e) { return null; } }
+function restaurerChampsDepuisEtat() {
+  const e = chargerEtat(); if (!e) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el != null && v != null) el.value = v; };
+  const radio = document.querySelector(`input[name="filtre-marque"][value="${e.marque || "toutes"}"]`); if (radio) radio.checked = true;
+  set("filtre-personne", e.personne); set("critere1", e.critere1); set("min1", e.min1); set("max1", e.max1);
+  set("critere2", e.critere2); set("min2", e.min2); set("max2", e.max2);
+  if (document.getElementById("series-actif")) document.getElementById("series-actif").checked = !!e.seriesActif;
+  set("series-ecart", e.seriesEcart || 10);
+  joursDeplies = new Set((e.joursDeplies || []).map(String));
+  modeToutVoir = !!e.toutVoir;
+  document.getElementById("btn-tout-voir").textContent = modeToutVoir ? "↩️ Revenir à ma sélection" : "👁️ Tout déplier";
+}
+function restaurerOnglet() { let o = "mois"; try { o = localStorage.getItem(K_ONGLET) || "mois"; } catch (e) {} activerOnglet(o); }
+
+/* =========================================================================
+   DÉMARRAGE
+   ========================================================================= */
+async function demarrer() {
+  majEtatSync();
+  const ok = await chargerManifeste();
+  if (!CONFIG.manifest) { activerOnglet("reglages"); return; }
+  await chargerDonneesDepuisGithub(false);
+  if (ok) { restaurerChampsDepuisEtat(); peuplerSelecteurs(); rafraichir(); }
+}
+
+(function init() {
+  chargerConfig();
+  chargerDonneesLocales();
+  restaurerOnglet();
+  appliquerEtatAvances();
+  demarrer();
+})();
+</script>
+</body>
+</html>
