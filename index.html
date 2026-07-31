@@ -470,7 +470,7 @@
 </div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.17</span>
+  <span class="version">version autonome 2026-07-30.18</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -520,7 +520,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.17";
+const VERSION = "2026-07-30.18";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -975,38 +975,61 @@ async function importerDossiersCoches() {
   // cochés séparément = une sélection chacun.
   const tops = []; (function walk(n) { if (_dossiersCoches.has(n.id)) { tops.push(n); return; } for (const c of n.enfants.values()) walk(c); })(_arbreCourant.racine);
   if (!tops.length) { etatSync("Aucun dossier coché.", "err"); return; }
-  _reimportQueue = tops; _reimportIdx = 0; _reimportPhotos = []; _reimportVus = new Set(); _reimportAnnule = false; _reimportEnCours = true;
+  _reimportQueue = tops.map(n => ({ node: n, chemin: cheminNoeud(n) }));
+  _reimportIdx = 0; _reimportPhotos = []; _reimportVus = new Set(); _reimportAnnule = false; _reimportEnCours = true; _reimportTropLarge = false;
   demanderProchainDossierReimport();
 }
 
-let _reimportQueue = [], _reimportIdx = 0, _reimportPhotos = [], _reimportVus = new Set(), _reimportAnnule = false, _reimportEnCours = false;
+let _reimportQueue = [], _reimportIdx = 0, _reimportPhotos = [], _reimportVus = new Set(), _reimportAnnule = false, _reimportEnCours = false, _reimportTropLarge = false;
 function titreModale(t) { const e = document.getElementById("analyse-titre"); if (e) e.textContent = t; }
+// Chemin (liste de noms) d'un nœud depuis la racine : ["Pictures","2023","ete"].
+function cheminNoeud(node) {
+  const parents = new Map(); if (_arbreCourant && _arbreCourant.racine) _constrParents(_arbreCourant.racine, null, parents);
+  const path = []; let n = node; while (n) { path.unshift(n.nom); n = parents.get(n.id); }
+  return path;
+}
 function demanderProchainDossierReimport() {
   if (_reimportAnnule) return;
   if (_reimportIdx >= _reimportQueue.length) { finaliserReimport(); return; }
-  const node = _reimportQueue[_reimportIdx];
+  const it = _reimportQueue[_reimportIdx];
   activerOnglet("import");
   titreModale("Recréation des vignettes…");
   ouvrirAnalyseModale();
-  majAnalyseModale(`Dossier ${_reimportIdx + 1}/${_reimportQueue.length} : re-sélectionne « ${node.nom} » (${node.nbTotal.toLocaleString("fr-FR")} photo(s) attendue(s))…`, null);
+  majAnalyseModale(`Dossier ${_reimportIdx + 1}/${_reimportQueue.length} — dans le Finder, ouvre puis choisis directement ce dossier : ${it.chemin.join("  ›  ")} (≈ ${it.node.nbTotal.toLocaleString("fr-FR")} photo(s)). Ne choisis pas un dossier parent, sinon Safari re-scanne tout.`, null);
   _attenteSelection = true;
   document.getElementById("scan-import").click();
 }
 async function recevoirDossierReimport(fileList, input) {
   _attenteSelection = false;
   if (_reimportAnnule) { if (input) input.value = ""; return; }
-  const node = _reimportQueue[_reimportIdx];
+  const it = _reimportQueue[_reimportIdx];
   const N = fileList.length;
-  majAnalyseModale(`Lecture de « ${node.nom} »…`, null);
+  // Sous-chemin attendu SOUS le dossier que l'utilisateur a réellement choisi :
+  // si tu choisis un parent, on ne garde que les photos de la branche cochée.
+  let sousChemin = [];
+  if (N) {
+    const racineChoisie = (fileList[0].webkitRelativePath || fileList[0].name).split("/")[0];
+    const E = it.chemin; let j = -1;
+    for (let x = E.length - 1; x >= 0; x--) { if (E[x] === racineChoisie) { j = x; break; } }
+    if (j >= 0) sousChemin = E.slice(j + 1);
+  }
+  const correspond = (f) => {
+    if (!sousChemin.length) return true;
+    const segs = (f.webkitRelativePath || f.name).split("/"); const inter = segs.slice(1, segs.length - 1);
+    for (let x = 0; x < sousChemin.length; x++) if (inter[x] !== sousChemin[x]) return false;
+    return true;
+  };
+  majAnalyseModale(`Lecture de « ${it.node.nom} »…`, null);
   await pause();
   _analyseEnCours = true;
   let ajout = 0;
+  if (N > (it.node.nbTotal || 0) * 3 + 50) _reimportTropLarge = true;   // beaucoup plus large que nécessaire
   for (let i = 0; i < N; i++) {
     const f = fileList[i];
-    if (RE_PHOTO.test(f.name)) { const k = f.name + ":" + f.size; if (!_reimportVus.has(k)) { _reimportVus.add(k); _reimportPhotos.push(f); ajout++; } }
+    if (RE_PHOTO.test(f.name) && correspond(f)) { const k = f.name + ":" + f.size; if (!_reimportVus.has(k)) { _reimportVus.add(k); _reimportPhotos.push(f); ajout++; } }
     if ((i & 4095) === 0) {
       if (_reimportAnnule) { _analyseEnCours = false; if (input) input.value = ""; return; }
-      majAnalyseModale(`Dossier ${_reimportIdx + 1}/${_reimportQueue.length} — ${i.toLocaleString("fr-FR")} / ${N.toLocaleString("fr-FR")} — ${ajout.toLocaleString("fr-FR")} photo(s)`, i / N);
+      majAnalyseModale(`Dossier ${_reimportIdx + 1}/${_reimportQueue.length} — ${i.toLocaleString("fr-FR")} / ${N.toLocaleString("fr-FR")} — ${ajout.toLocaleString("fr-FR")} photo(s) retenue(s)`, i / N);
       await pause();
     }
   }
@@ -1022,6 +1045,7 @@ async function finaliserReimport() {
   const photos = _reimportPhotos; _reimportPhotos = []; _reimportQueue = [];
   if (!photos.length) { etatSync("Aucune photo trouvée dans les dossiers re-sélectionnés.", "err"); return; }
   await importerFichiers(photos);
+  if (_reimportTropLarge) etatSync(photos.length + " vignette(s) créée(s). Astuce : choisis directement le petit dossier pour éviter de re-scanner un dossier parent.", "ok");
 }
 function annulerReimport() {
   _reimportAnnule = true; _reimportEnCours = false; _attenteSelection = false; _analyseEnCours = false;
