@@ -1,0 +1,17 @@
+{
+  "mois": "2000-05",
+  "texte_album": "",
+  "marque_plus": [
+    "blob:https://hammerinhank.github.io/686c7aaf-93fc-4cb3-9eb9-5525da91112a",
+    "blob:https://hammerinhank.github.io/006e0188-7edd-4157-a1e4-9f4d9197bc3c"
+  ],
+  "marque_moins": [
+    "blob:https://hammerinhank.github.io/fbebd492-5fe2-48db-8a55-b41a2cebbfee",
+    "blob:https://hammerinhank.github.io/5d4cba5b-2558-4eeb-8914-efab7b2f301f"
+  ],
+  "non_marque": [
+    "blob:https://hammerinhank.github.io/ff9f0cc5-caad-4c5e-896c-52d342f33f7d",
+    "blob:https://hammerinhank.github.io/2c34160b-9efc-4ee7-9949-6da759d6cd91",
+    "blob:https://hammerinhank.github.io/3ce9b6ce-2ecf-4650-81ac-bba25e51478a"
+  ]
+}
