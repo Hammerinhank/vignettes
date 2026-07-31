@@ -314,10 +314,11 @@
         <input type="file" id="fichier-import" accept="image/*" multiple style="display:none" onchange="importerFichiers(this.files); this.value='';">
         <button class="btn" onclick="etatSync('Sélection du dossier…',''); document.getElementById('scan-dossier').click()" title="Choisis un dossier de ton ordinateur : l'application affiche l'arborescence de ses sous-dossiers avec une case à cocher à chaque niveau. Fonction d'ordinateur (Safari/Chrome) — non disponible sur iPhone. L'analyse est purement locale.">📂 Analyser un dossier…</button>
         <input type="file" id="scan-dossier" webkitdirectory directory multiple style="display:none" onchange="analyserDossier(this.files); this.value='';">
-        <button class="btn violet" id="btn-creer-coches" disabled onclick="importerDossiersCoches()" title="Crée des vignettes pour toutes les photos des dossiers cochés dans l'arborescence ci-dessous.">☑️ Créer les vignettes des dossiers cochés</button>
+        <button class="btn" id="btn-voir-arbre" disabled onclick="afficherArbreCourant()" title="Ré-affiche la dernière arborescence analysée (conservée pendant la session), avec les dossiers déjà cochés.">🌲 Voir l'arborescence</button>
+        <button class="btn violet" id="btn-creer-coches" disabled onclick="importerDossiersCoches()" title="Crée des vignettes pour toutes les photos des dossiers cochés dans l'arborescence.">☑️ Créer les vignettes des dossiers cochés</button>
       </div>
       <div class="zone-depot" onclick="document.getElementById('fichier-import').click()">Glisse-dépose des images ici (ou clique) pour les ajouter comme vignettes.</div>
-      <p class="aide">« Analyser un dossier » affiche l'arborescence avec une case à cocher par dossier (cocher un dossier coche aussi ses sous-dossiers). Coche les dossiers voulus puis clique « Créer les vignettes des dossiers cochés ». L'analyse d'un dossier s'affiche dans la zone des vignettes ci-dessous.</p>
+      <p class="aide">« Analyser un dossier » affiche l'arborescence avec une case à cocher par dossier (cocher un dossier coche aussi ses sous-dossiers). Coche les dossiers voulus puis clique « Créer les vignettes des dossiers cochés ». L'arborescence reste disponible toute la session (bouton « Voir l'arborescence »), avec ses cases cochées conservées, réutilisable autant de fois que voulu ; une nouvelle analyse remplace la précédente. Après un rechargement complet de la page, il faut ré-analyser le dossier (le navigateur ne conserve pas l'accès aux fichiers).</p>
     </div>
 
     <!-- Onglet FILTRES -->
@@ -445,7 +446,7 @@
 <div id="drop-overlay"><div class="boite">Déposez vos images ici</div></div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.11</span>
+  <span class="version">version autonome 2026-07-30.12</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -495,7 +496,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.11";
+const VERSION = "2026-07-30.12";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -758,6 +759,8 @@ async function importerFichiers(fileList) {
 /* ---- Analyse d'un dossier local : arborescence + cases à cocher ---- */
 const RE_PHOTO = /\.(jpe?g|png|gif|webp|bmp|tiff?|heic|heif|avif|cr2|cr3|nef|arw|dng|raf|orf|rw2|sr2|pef|srw)$/i;
 let _noeudsParId = new Map(), _idNoeud = 0;
+let _arbreCourant = null;          // dernière arborescence analysée (conservée en session)
+let _dossiersCoches = new Set();   // ids des dossiers cochés (conservés entre affichages)
 function _nouveauNoeud(nom) { const id = ++_idNoeud; const n = { id, nom, enfants: new Map(), fichiers: [], nbDirect: 0, nbTotal: 0 }; _noeudsParId.set(id, n); return n; }
 async function analyserDossier(fileList) {
   activerOnglet("import");
@@ -777,7 +780,7 @@ async function analyserDossier(fileList) {
   maj(`0 / ${N.toLocaleString("fr-FR")} fichiers`);
   progression(true, `Analyse : 0 / ${N.toLocaleString("fr-FR")} fichiers`, 0);
   await pause();
-  _noeudsParId = new Map(); _idNoeud = 0;
+  _noeudsParId = new Map(); _idNoeud = 0; _dossiersCoches = new Set();   // nouvelle analyse : remplace la précédente
   const racineNom = (files[0].webkitRelativePath || files[0].name).split("/")[0] || "Dossier";
   const racine = _nouveauNoeud(racineNom);
   let nbPhotos = 0;
@@ -804,13 +807,15 @@ async function analyserDossier(fileList) {
   await pause();
   afficherArbre(racine, nbPhotos, N);
   progression(false);
+  _arbreCourant = { racine, nbPhotos, nbFichiers: N };
+  const bv = document.getElementById("btn-voir-arbre"); if (bv) bv.disabled = false;
   majBoutonImport();
   etatSync("Analyse terminée — coche les dossiers à importer", "ok");
 }
 function noeudArbreHtml(node, ouvert) {
   const enfants = [...node.enfants.values()].filter(e => e.nbTotal > 0).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   const direct = node.nbDirect ? ` <span style="color:var(--text-dim);font-weight:400;">· ${node.nbDirect.toLocaleString("fr-FR")} ici</span>` : "";
-  const cb = `<input type="checkbox" class="cb-dossier" data-id="${node.id}" data-direct="${node.nbDirect}" onclick="event.stopPropagation()" onchange="cascadeCoche(this, ${enfants.length > 0})" title="Cocher pour importer les photos de ce dossier${enfants.length ? " et de ses sous-dossiers" : ""}">`;
+  const cb = `<input type="checkbox" class="cb-dossier" data-id="${node.id}" data-direct="${node.nbDirect}"${_dossiersCoches.has(node.id) ? " checked" : ""} onclick="event.stopPropagation()" onchange="cascadeCoche(this, ${enfants.length > 0})" title="Cocher pour importer les photos de ce dossier${enfants.length ? " et de ses sous-dossiers" : ""}">`;
   const tete = `${cb}📁 ${esc(node.nom)} <span class="nb">${node.nbTotal.toLocaleString("fr-FR")}</span>${direct}`;
   if (enfants.length) {
     return `<details${ouvert ? " open" : ""}><summary><span class="chevron">▸</span> ${tete}</summary><div class="arbre-niveau">${enfants.map(e => noeudArbreHtml(e, false)).join("")}</div></details>`;
@@ -831,27 +836,36 @@ function afficherArbre(racine, nbPhotos, nbFichiers) {
   c.scrollTop = 0;
 }
 function revenirAuxVignettes() { if (modeTout) rafraichirTout(); else rafraichir(); }
+// Ré-affiche la dernière arborescence analysée (conservée en session).
+function afficherArbreCourant() {
+  if (!_arbreCourant) { etatSync("Aucune arborescence — analyse d'abord un dossier.", "err"); return; }
+  activerOnglet("import");
+  afficherArbre(_arbreCourant.racine, _arbreCourant.nbPhotos, _arbreCourant.nbFichiers);
+  majBoutonImport();
+}
 // Cocher un dossier coche aussi tous ses sous-dossiers (et inversement).
 function cascadeCoche(cb, aDesEnfants) {
   if (aDesEnfants) {
     const det = cb.closest("details");
     if (det) det.querySelectorAll(".arbre-niveau input.cb-dossier").forEach(x => { x.checked = cb.checked; });
   }
+  _dossiersCoches = new Set([...document.querySelectorAll(".cb-dossier:checked")].map(x => +x.getAttribute("data-id")));
   majBoutonImport();
 }
 function majBoutonImport() {
   const btn = document.getElementById("btn-creer-coches"); if (!btn) return;
-  let n = 0; document.querySelectorAll(".cb-dossier:checked").forEach(cb => { n += parseInt(cb.getAttribute("data-direct") || "0", 10); });
+  let n = 0; _dossiersCoches.forEach(id => { const node = _noeudsParId.get(id); if (node) n += node.nbDirect; });
   btn.disabled = n === 0;
   btn.textContent = n > 0 ? `☑️ Créer les vignettes des dossiers cochés (${n.toLocaleString("fr-FR")} photo(s))` : "☑️ Créer les vignettes des dossiers cochés";
 }
 // Crée les vignettes de toutes les photos des dossiers cochés (dédupliquées).
+// S'appuie sur la sélection conservée en mémoire : marche même si l'arbre
+// n'est pas affiché à l'écran à cet instant.
 async function importerDossiersCoches() {
-  const coches = [...document.querySelectorAll(".cb-dossier:checked")];
-  if (!coches.length) { etatSync("Aucun dossier coché.", "err"); return; }
+  if (!_dossiersCoches.size) { etatSync("Aucun dossier coché.", "err"); return; }
   const vus = new Set(); const fichiers = [];
-  for (const cb of coches) {
-    const node = _noeudsParId.get(+cb.getAttribute("data-id")); if (!node) continue;
+  for (const id of _dossiersCoches) {
+    const node = _noeudsParId.get(id); if (!node) continue;
     for (const f of node.fichiers) { const k = f.name + ":" + f.size; if (!vus.has(k)) { vus.add(k); fichiers.push(f); } }
   }
   if (!fichiers.length) { etatSync("Aucune photo dans les dossiers cochés.", "err"); return; }
