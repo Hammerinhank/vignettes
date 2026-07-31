@@ -136,6 +136,8 @@
   details.jour > summary { cursor: pointer; padding: 6px 10px; font-size: 12px; user-select: none; list-style: none; }
   details.jour > summary::-webkit-details-marker { display: none; }
   .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; padding: 6px 10px 10px; }
+  .entete-date { grid-column: 1 / -1; font-size: 12px; font-weight: 700; color: var(--text);
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; margin-top: 4px; text-transform: capitalize; }
   .carte { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 2px; position: relative; }
   .carte.plus { border: 3px solid var(--vert); }
   .carte.moins { border: 3px solid var(--accent); }
@@ -251,6 +253,7 @@
         <label title="Texte propre à ce mois : remplace « non marqué » dans le nom de l'album correspondant à l'export.">📝 Texte d'album :
           <input type="text" id="texte-album" maxlength="40" placeholder="(aucun)" oninput="publierTexteAlbum()" style="width:220px;"></label>
         <button class="btn" onclick="basculerToutVoir()" id="btn-tout-voir">👁️ Tout déplier</button>
+        <button class="btn" onclick="basculerToutesPhotos()" id="btn-tout-photos" title="Affiche toutes les photos, toutes années et tous mois confondus, par tranches de 100 (avec un bouton pour charger les suivantes). Les filtres restent actifs.">🌐 Voir toutes les photos</button>
         <button class="btn" onclick="document.getElementById('fichier-import').click()" title="Ajoute des images à la volée pour tester : elles deviennent des vignettes normales (marquage, filtres, séries…). Date de prise de vue lue dans l'EXIF si présente, sinon date du fichier. Session locale (non enregistrées dans le dépôt).">🖼️ Importer des images…</button>
         <input type="file" id="fichier-import" accept="image/*" multiple style="display:none" onchange="importerFichiers(this.files); this.value='';">
       </div>
@@ -380,7 +383,7 @@
 <div id="drop-overlay"><div class="boite">Déposez vos images ici</div></div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.3</span>
+  <span class="version">version autonome 2026-07-30.4</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -429,7 +432,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.3";
+const VERSION = "2026-07-30.4";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -788,6 +791,7 @@ function passeFiltres(v, f) {
    CONSTRUCTION DU MOIS + RENDU
    ========================================================================= */
 function rafraichir() {
+  if (modeTout) return rafraichirTout();
   const annee = document.getElementById("sel-annee").value;
   const mois = document.getElementById("sel-mois").value;
   const conteneur = document.getElementById("contenu");
@@ -861,7 +865,57 @@ function carte(v) {
   </div>`;
 }
 
-/* ---- Mode Séries ---- */
+/* ---- Mode « toutes les photos » (toutes années/mois, paginé par 100) ---- */
+let modeTout = false, limiteTout = 100;
+function basculerToutesPhotos() {
+  modeTout = !modeTout; limiteTout = 100;
+  document.getElementById("btn-tout-photos").textContent = modeTout ? "📅 Revenir au mois" : "🌐 Voir toutes les photos";
+  document.getElementById("sel-annee").disabled = modeTout;
+  document.getElementById("sel-mois").disabled = modeTout;
+  document.getElementById("btn-tout-voir").disabled = modeTout;
+  const c = document.getElementById("contenu"); if (c) c.scrollTop = 0;
+  rafraichir();
+}
+function formatDateComplete(v) {
+  if (!v.datetime) return "Date inconnue";
+  const d = new Date(v.datetime);
+  if (isNaN(d)) return v.datetime.slice(0, 10);
+  return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+function rafraichirTout() {
+  const f = lireFiltres();
+  let plus = 0, moins = 0; const persSet = new Set();
+  for (const v of MANIFEST) { const mk = DATA.marques[v.uuid]; if (mk === "plus") plus++; else if (mk === "moins") moins++; v.personnes.forEach(p => persSet.add(p)); }
+  const aucune = MANIFEST.length - plus - moins;
+  const liste = MANIFEST.filter(v => passeFiltres(v, f)).sort((a, b) => (a.datetime || "").localeCompare(b.datetime || ""));
+  moisCourant = { jours: {}, total: liste.length, nbMarquees: plus + moins, repartition: { plus, moins, aucune }, personnes: [...persSet].sort(), listeTout: liste };
+  peuplerContenuTout(liste);
+  document.getElementById("resume").innerHTML =
+    `${liste.length.toLocaleString("fr-FR")} photo(s) correspondant au filtre — <strong>${(plus + moins).toLocaleString("fr-FR")}</strong> marquée(s) au total, toutes années confondues.${decrireFiltresAvances()}`;
+  majCamembert(); majSuggestionsPersonnes(); majPastilles(); sauvegarderEtat();
+}
+function peuplerContenuTout(liste) {
+  const conteneur = document.getElementById("contenu");
+  if (!liste.length) { conteneur.innerHTML = `<p style="font-size:12px;color:var(--text-dim);">Aucune photo avec ce filtre.</p>`; return; }
+  const tranche = liste.slice(0, limiteTout);
+  let html = '<div class="grille">'; let dateCour = null;
+  for (const v of tranche) {
+    const d = v.datetime ? v.datetime.slice(0, 10) : "?";
+    if (d !== dateCour) { dateCour = d; html += `<div class="entete-date">${esc(formatDateComplete(v))}</div>`; }
+    html += carte(v);
+  }
+  html += "</div>";
+  const restant = liste.length - tranche.length;
+  if (restant > 0) html += `<div style="text-align:center;margin:12px 0;"><button class="btn" onclick="chargerPlusTout()">Afficher les ${Math.min(100, restant)} suivantes (${restant.toLocaleString("fr-FR")} restantes)</button></div>`;
+  else html += `<div style="text-align:center;margin:12px 0;font-size:11px;color:var(--text-dim);">Fin — ${liste.length.toLocaleString("fr-FR")} photo(s) au total.</div>`;
+  conteneur.innerHTML = html;
+}
+function chargerPlusTout() {
+  limiteTout += 100;
+  const c = document.getElementById("contenu"); const y = c.scrollTop;
+  peuplerContenuTout(moisCourant.listeTout || []);
+  c.scrollTop = y;
+}
 function seriesActif() { const e = document.getElementById("series-actif"); return !!(e && e.checked); }
 function ecartSeries() { const e = document.getElementById("series-ecart"); const n = e ? parseInt(e.value, 10) : 10; return isNaN(n) || n < 1 ? 10 : n; }
 
@@ -939,12 +993,10 @@ function poserMarque(uuid, type) {
 function basculerMarque(uuid, type) { poserMarque(uuid, type); finaliserMarquage(); }
 
 function finaliserMarquage() {
-  // recompte le mois courant sans refiltrer entièrement : on redessine.
+  const c = document.getElementById("contenu"); const y = c ? c.scrollTop : 0;
   planifierSauvegarde();
-  const filtreActifSurMarque = (lireFiltres().marque !== "toutes");
-  // Si un filtre par marque est actif, un changement peut faire (dis)paraître
-  // des cartes : on refiltre. Sinon, redraw local (rapide) suffit.
   rafraichir();
+  if (c) c.scrollTop = y;
 }
 
 /* =========================================================================
@@ -1109,7 +1161,7 @@ async function exporterAlbumsAnnee() {
    ZOOM + MÉTADONNÉES
    ========================================================================= */
 function vignetteParUuid(uuid) { return MANIFEST.find(v => v.uuid === uuid) || null; }
-function listeAffichee() { const out = []; for (const j of Object.keys(moisCourant.jours).sort((a, b) => +a - +b)) for (const v of moisCourant.jours[j]) out.push(v.uuid); return out; }
+function listeAffichee() { return [...document.querySelectorAll("#contenu .carte[data-uuid]")].map(e => e.getAttribute("data-uuid")); }
 let zoomPlein = false;
 function ouvrirZoom(uuid) {
   zoomListe = listeAffichee(); zoomIndex = Math.max(0, zoomListe.indexOf(uuid));
