@@ -7,7 +7,31 @@
       "personnes": [],
       "score": null,
       "scores_detail": {}
+    },
+    {
+      "uuid": "local:IMG_0616.jpg:288227",
+      "fichier": "data/vignettes-importees/local_IMG_0616.jpg_288227.jpg",
+      "datetime": "2025-07-24T15:19:40",
+      "personnes": [],
+      "score": null,
+      "scores_detail": {}
+    },
+    {
+      "uuid": "local:IMG_0617.jpg:357935",
+      "fichier": "data/vignettes-importees/local_IMG_0617.jpg_357935.jpg",
+      "datetime": "2025-07-24T15:20:30",
+      "personnes": [],
+      "score": null,
+      "scores_detail": {}
+    },
+    {
+      "uuid": "local:IMG_0618.jpg:542456",
+      "fichier": "data/vignettes-importees/local_IMG_0618.jpg_542456.jpg",
+      "datetime": "2025-07-24T15:31:51",
+      "personnes": [],
+      "score": null,
+      "scores_detail": {}
     }
   ],
-  "maj": "2026-07-31T09:35:10.955Z"
+  "maj": "2026-07-31T09:35:51.380Z"
 }
