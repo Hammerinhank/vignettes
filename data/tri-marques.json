@@ -2,7 +2,7 @@
   "marques": {
     "local:IMG_0616.jpg:288227": "moins",
     "local:IMG_0618.jpg:542456": "plus",
-    "local:IMG_9901.jpeg:3815693": "moins"
+    "local:IMG_9901.jpeg:3815693": "plus"
   },
   "textesAlbums": {},
   "etat": {
@@ -20,5 +20,5 @@
     "seriesEcart": 10,
     "toutVoir": false
   },
-  "maj": "2026-07-31T09:59:15.876Z"
+  "maj": "2026-07-31T10:00:07.222Z"
 }
