@@ -5,5 +5,20 @@
     "local:IMG_9901.jpeg:3815693": "moins"
   },
   "textesAlbums": {},
-  "maj": "2026-07-31T09:13:45.177Z"
+  "etat": {
+    "annee": 2026,
+    "mois": 7,
+    "marque": "toutes",
+    "personne": "",
+    "critere1": "",
+    "min1": "",
+    "max1": "",
+    "critere2": "",
+    "min2": "",
+    "max2": "",
+    "seriesActif": false,
+    "seriesEcart": 10,
+    "toutVoir": false
+  },
+  "maj": "2026-07-31T09:20:56.689Z"
 }
