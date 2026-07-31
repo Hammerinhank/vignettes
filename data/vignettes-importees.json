@@ -129,14 +129,6 @@
       "scores_detail": {}
     },
     {
-      "uuid": "local:IMG_8585.jpeg:4442577",
-      "fichier": "data/vignettes-importees/local_IMG_8585.jpeg_4442577.jpeg",
-      "datetime": "2026-05-07T18:17:09",
-      "personnes": [],
-      "score": null,
-      "scores_detail": {}
-    },
-    {
       "uuid": "local:IMG_8587.HEIC:2821924",
       "fichier": "data/vignettes-importees/local_IMG_8587.HEIC_2821924.heic",
       "datetime": "2026-05-07T18:44:05",
@@ -145,5 +137,5 @@
       "scores_detail": {}
     }
   ],
-  "maj": "2026-07-31T19:57:25.020Z"
+  "maj": "2026-07-31T20:10:17.840Z"
 }
