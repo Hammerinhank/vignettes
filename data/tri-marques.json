@@ -21,7 +21,7 @@
   ],
   "etat": {
     "annee": 1999,
-    "mois": null,
+    "mois": 8,
     "marque": "toutes",
     "personne": "",
     "critere1": "",
@@ -34,5 +34,5 @@
     "seriesEcart": 10,
     "toutVoir": false
   },
-  "maj": "2026-07-31T20:10:46.730Z"
+  "maj": "2026-07-31T20:11:04.913Z"
 }
