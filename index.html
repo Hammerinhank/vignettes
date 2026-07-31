@@ -325,6 +325,7 @@
         <input type="file" id="fichier-import" accept="image/*" multiple style="display:none" onchange="importerFichiers(this.files); this.value='';">
         <button class="btn" onclick="lancerAnalyseDossier()" title="Choisis un dossier de ton ordinateur : l'application affiche l'arborescence de ses sous-dossiers avec une case à cocher à chaque niveau. Fonction d'ordinateur (Safari/Chrome) — non disponible sur iPhone. L'analyse est purement locale.">📂 Analyser un dossier…</button>
         <input type="file" id="scan-dossier" webkitdirectory directory multiple style="display:none" onchange="analyserDossier(this.files, this)">
+        <input type="file" id="scan-import" webkitdirectory directory multiple style="display:none" onchange="recevoirDossierReimport(this.files, this)">
         <button class="btn" id="btn-voir-arbre" disabled onclick="afficherArbreCourant()" title="Ré-affiche la dernière arborescence analysée (conservée pendant la session), avec les dossiers déjà cochés.">🌲 Voir l'arborescence</button>
         <button class="btn violet" id="btn-creer-coches" disabled onclick="importerDossiersCoches()" title="Crée des vignettes pour toutes les photos des dossiers cochés dans l'arborescence.">☑️ Créer les vignettes des dossiers cochés</button>
       </div>
@@ -460,7 +461,7 @@
 <div class="overlay" id="overlay-analyse">
   <div class="analyse-modale">
     <div class="spin gros"></div>
-    <div class="titre">Analyse d'un dossier en cours…</div>
+    <div class="titre" id="analyse-titre">Analyse d'un dossier en cours…</div>
     <div class="detail" id="analyse-detail">Lecture de la liste des fichiers…</div>
     <div class="pbarre-modale"><div id="analyse-barre"></div></div>
     <button class="btn" onclick="annulerAnalyse()">✕ Annuler l'analyse</button>
@@ -468,7 +469,7 @@
 </div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.15</span>
+  <span class="version">version autonome 2026-07-30.16</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -518,7 +519,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.15";
+const VERSION = "2026-07-30.16";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -796,6 +797,7 @@ function majAnalyseModale(texte, ratio) {
 function ouvrirAnalyseModale() { majAnalyseModale("Préparation…", null); document.getElementById("overlay-analyse").classList.add("ouvert"); }
 function fermerAnalyseModale() { document.getElementById("overlay-analyse").classList.remove("ouvert"); const b = document.getElementById("analyse-barre"); if (b) { b.classList.remove("indet"); b.style.width = "0%"; } }
 function annulerAnalyse() {
+  if (_reimportEnCours) { annulerReimport(); return; }
   _analyseAnnulee = true; _attenteSelection = false;
   majAnalyseModale("Annulation…", null);
   if (!_analyseEnCours) { fermerAnalyseModale(); progression(false); etatSync("Analyse annulée", ""); }
@@ -880,7 +882,7 @@ function afficherArbre(racine, nbPhotos, nbFichiers) {
     c.scrollTop = 0; return;
   }
   const note = (_arbreCourant && _arbreCourant.restaure)
-    ? `<div style="margin-top:6px;font-size:12px;color:var(--violet);">Arborescence restaurée du dernier scan (après rechargement). Tu peux la consulter ; pour <strong>créer des vignettes</strong>, ré-analyse le dossier — le navigateur a fermé l'accès aux fichiers au rechargement.</div>` : "";
+    ? `<div style="margin-top:6px;font-size:12px;color:var(--violet);">Arborescence restaurée du dernier scan. Coche les dossiers voulus puis « Créer les vignettes… » : tu re-sélectionneras seulement ces dossiers (rapide, dossier par dossier) — le navigateur a fermé l'accès aux fichiers au rechargement.</div>` : "";
   c.innerHTML = `<div style="margin-bottom:10px;">
       <button class="btn" onclick="revenirAuxVignettes()">← Revenir aux vignettes</button>
       <div style="margin-top:8px;font-size:13px;">Analyse de « ${esc(racine.nom)} » — <span class="nb">${nbPhotos.toLocaleString("fr-FR")}</span> photo(s) sur ${nbFichiers.toLocaleString("fr-FR")} fichier(s). Coche les dossiers voulus, puis clique « Créer les vignettes des dossiers cochés » (onglet 📥 Import).</div>${note}
@@ -943,23 +945,83 @@ function majBoutonImport() {
 // n'est pas affiché à l'écran à cet instant.
 async function importerDossiersCoches() {
   if (!_dossiersCoches.size) { etatSync("Aucun dossier coché.", "err"); return; }
-  const vus = new Set(); const fichiers = [];
-  for (const id of _dossiersCoches) {
-    const node = _noeudsParId.get(id); if (!node) continue;
-    for (const f of node.fichiers) { const k = f.name + ":" + f.size; if (!vus.has(k)) { vus.add(k); fichiers.push(f); } }
+  // Cas session : les fichiers sont en mémoire → import direct, instantané.
+  if (!(_arbreCourant && _arbreCourant.restaure)) {
+    const vus = new Set(); const fichiers = [];
+    for (const id of _dossiersCoches) {
+      const node = _noeudsParId.get(id); if (!node) continue;
+      for (const f of node.fichiers) { const k = f.name + ":" + f.size; if (!vus.has(k)) { vus.add(k); fichiers.push(f); } }
+    }
+    if (!fichiers.length) { etatSync("Aucune photo dans les dossiers cochés.", "err"); return; }
+    await importerFichiers(fichiers); return;
   }
-  if (!fichiers.length) {
-    if (_arbreCourant && _arbreCourant.restaure) etatSync("Ré-analyse le dossier pour créer les vignettes (accès aux fichiers fermé au rechargement).", "err");
-    else etatSync("Aucune photo dans les dossiers cochés.", "err");
-    return;
+  // Cas restauré (après rechargement) : on ne ré-analyse QUE les sous-arbres cochés.
+  // Les dossiers cochés de plus haut niveau (un parent coché couvre ses enfants)
+  // sont re-sélectionnés un par un — petits donc rapides. Le regroupement suit
+  // directement les cases : parent coché = une sélection ; dossiers éloignés
+  // cochés séparément = une sélection chacun.
+  const tops = []; (function walk(n) { if (_dossiersCoches.has(n.id)) { tops.push(n); return; } for (const c of n.enfants.values()) walk(c); })(_arbreCourant.racine);
+  if (!tops.length) { etatSync("Aucun dossier coché.", "err"); return; }
+  _reimportQueue = tops; _reimportIdx = 0; _reimportPhotos = []; _reimportVus = new Set(); _reimportAnnule = false; _reimportEnCours = true;
+  demanderProchainDossierReimport();
+}
+
+let _reimportQueue = [], _reimportIdx = 0, _reimportPhotos = [], _reimportVus = new Set(), _reimportAnnule = false, _reimportEnCours = false;
+function titreModale(t) { const e = document.getElementById("analyse-titre"); if (e) e.textContent = t; }
+function demanderProchainDossierReimport() {
+  if (_reimportAnnule) return;
+  if (_reimportIdx >= _reimportQueue.length) { finaliserReimport(); return; }
+  const node = _reimportQueue[_reimportIdx];
+  activerOnglet("import");
+  titreModale("Recréation des vignettes…");
+  ouvrirAnalyseModale();
+  majAnalyseModale(`Dossier ${_reimportIdx + 1}/${_reimportQueue.length} : re-sélectionne « ${node.nom} » (${node.nbTotal.toLocaleString("fr-FR")} photo(s) attendue(s))…`, null);
+  _attenteSelection = true;
+  document.getElementById("scan-import").click();
+}
+async function recevoirDossierReimport(fileList, input) {
+  _attenteSelection = false;
+  if (_reimportAnnule) { if (input) input.value = ""; return; }
+  const node = _reimportQueue[_reimportIdx];
+  const N = fileList.length;
+  majAnalyseModale(`Lecture de « ${node.nom} »…`, null);
+  await pause();
+  _analyseEnCours = true;
+  let ajout = 0;
+  for (let i = 0; i < N; i++) {
+    const f = fileList[i];
+    if (RE_PHOTO.test(f.name)) { const k = f.name + ":" + f.size; if (!_reimportVus.has(k)) { _reimportVus.add(k); _reimportPhotos.push(f); ajout++; } }
+    if ((i & 4095) === 0) {
+      if (_reimportAnnule) { _analyseEnCours = false; if (input) input.value = ""; return; }
+      majAnalyseModale(`Dossier ${_reimportIdx + 1}/${_reimportQueue.length} — ${i.toLocaleString("fr-FR")} / ${N.toLocaleString("fr-FR")} — ${ajout.toLocaleString("fr-FR")} photo(s)`, i / N);
+      await pause();
+    }
   }
-  await importerFichiers(fichiers);
+  _analyseEnCours = false;
+  if (input) input.value = "";
+  _reimportIdx++;
+  demanderProchainDossierReimport();
+}
+async function finaliserReimport() {
+  _reimportEnCours = false;
+  fermerAnalyseModale();
+  titreModale("Analyse d'un dossier en cours…");
+  const photos = _reimportPhotos; _reimportPhotos = []; _reimportQueue = [];
+  if (!photos.length) { etatSync("Aucune photo trouvée dans les dossiers re-sélectionnés.", "err"); return; }
+  await importerFichiers(photos);
+}
+function annulerReimport() {
+  _reimportAnnule = true; _reimportEnCours = false; _attenteSelection = false; _analyseEnCours = false;
+  _reimportQueue = []; _reimportPhotos = [];
+  fermerAnalyseModale(); progression(false); titreModale("Analyse d'un dossier en cours…");
+  etatSync("Recréation annulée", "");
 }
 
 // Glisser-déposer sur toute la fenêtre.
 let _dragCompteur = 0;
 // Si l'utilisateur ferme le sélecteur de dossier sans rien choisir, on retire la modale.
-(function () { const inp = document.getElementById("scan-dossier"); if (inp) inp.addEventListener("cancel", () => { if (_attenteSelection) { _attenteSelection = false; fermerAnalyseModale(); progression(false); etatSync("Sélection annulée", ""); } }); })();
+(function () { const inp = document.getElementById("scan-dossier"); if (inp) inp.addEventListener("cancel", () => { if (_attenteSelection && !_reimportEnCours) { _attenteSelection = false; fermerAnalyseModale(); progression(false); etatSync("Sélection annulée", ""); } }); })();
+(function () { const inp = document.getElementById("scan-import"); if (inp) inp.addEventListener("cancel", () => { if (_reimportEnCours) annulerReimport(); }); })();
 window.addEventListener("dragenter", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); _dragCompteur++; document.getElementById("drop-overlay").classList.add("actif"); } });
 window.addEventListener("dragover", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) e.preventDefault(); });
 window.addEventListener("dragleave", e => { e.preventDefault(); _dragCompteur = Math.max(0, _dragCompteur - 1); if (!_dragCompteur) document.getElementById("drop-overlay").classList.remove("actif"); });
