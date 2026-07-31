@@ -468,7 +468,7 @@
 </div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.14</span>
+  <span class="version">version autonome 2026-07-30.15</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -518,7 +518,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.14";
+const VERSION = "2026-07-30.15";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -528,6 +528,8 @@ const K_DATA   = "tvsa_data";      // { marques:{uuid:"plus"|"moins"}, textesAlb
 const K_ETAT   = "tvsa_etat";
 const K_AVANCES = "tvsa_avances";
 const K_ONGLET  = "tvsa_onglet";
+const K_ARBRE   = "tvsa_arbre";        // structure de la dernière arborescence analysée (sans les fichiers)
+const K_ARBRE_COCHES = "tvsa_arbre_coches";
 
 // ---- État applicatif ----
 let CONFIG = { manifest: "", images: "", repo: "", branche: "main", datapath: "data/tri-marques.json" };
@@ -857,6 +859,7 @@ async function analyserDossier(fileList, input) {
   if (input) input.value = "";
   _arbreCourant = { racine, nbPhotos, nbFichiers: N };
   const bv = document.getElementById("btn-voir-arbre"); if (bv) bv.disabled = false;
+  sauverArbreLocal(racine, nbPhotos, N);
   majBoutonImport();
   etatSync("Analyse terminée — coche les dossiers à importer", "ok");
 }
@@ -876,15 +879,43 @@ function afficherArbre(racine, nbPhotos, nbFichiers) {
     c.innerHTML = `<div style="margin-bottom:10px;"><button class="btn" onclick="revenirAuxVignettes()">← Revenir aux vignettes</button></div><p style="font-size:12px;color:var(--text-dim);">Aucune photo trouvée dans « ${esc(racine.nom)} » (${nbFichiers.toLocaleString("fr-FR")} fichier(s) analysés).</p>`;
     c.scrollTop = 0; return;
   }
+  const note = (_arbreCourant && _arbreCourant.restaure)
+    ? `<div style="margin-top:6px;font-size:12px;color:var(--violet);">Arborescence restaurée du dernier scan (après rechargement). Tu peux la consulter ; pour <strong>créer des vignettes</strong>, ré-analyse le dossier — le navigateur a fermé l'accès aux fichiers au rechargement.</div>` : "";
   c.innerHTML = `<div style="margin-bottom:10px;">
       <button class="btn" onclick="revenirAuxVignettes()">← Revenir aux vignettes</button>
-      <div style="margin-top:8px;font-size:13px;">Analyse de « ${esc(racine.nom)} » — <span class="nb">${nbPhotos.toLocaleString("fr-FR")}</span> photo(s) sur ${nbFichiers.toLocaleString("fr-FR")} fichier(s). Coche les dossiers voulus, puis clique « Créer les vignettes des dossiers cochés » (onglet 📥 Import).</div>
+      <div style="margin-top:8px;font-size:13px;">Analyse de « ${esc(racine.nom)} » — <span class="nb">${nbPhotos.toLocaleString("fr-FR")}</span> photo(s) sur ${nbFichiers.toLocaleString("fr-FR")} fichier(s). Coche les dossiers voulus, puis clique « Créer les vignettes des dossiers cochés » (onglet 📥 Import).</div>${note}
     </div>
     <div class="arbre">${noeudArbreHtml(racine, true)}</div>`;
   c.scrollTop = 0;
 }
 function revenirAuxVignettes() { if (modeTout) rafraichirTout(); else rafraichir(); }
-// Ré-affiche la dernière arborescence analysée (conservée en session).
+// --- Persistance de la structure de l'arborescence (sans les fichiers) ---
+function _serialiserNoeud(n) { return { i: n.id, n: n.nom, d: n.nbDirect, t: n.nbTotal, e: [...n.enfants.values()].map(_serialiserNoeud) }; }
+function _reconstruireNoeud(s) {
+  const n = { id: s.i, nom: s.n, enfants: new Map(), fichiers: [], nbDirect: s.d || 0, nbTotal: s.t || 0 };
+  _noeudsParId.set(n.id, n);
+  for (const c of (s.e || [])) { const enf = _reconstruireNoeud(c); n.enfants.set(enf.nom, enf); }
+  return n;
+}
+function sauverCochesArbre() { try { localStorage.setItem(K_ARBRE_COCHES, JSON.stringify([..._dossiersCoches])); } catch (e) {} }
+function sauverArbreLocal(racine, nbPhotos, nbFichiers) {
+  try { localStorage.setItem(K_ARBRE, JSON.stringify({ racine: _serialiserNoeud(racine), nbPhotos, nbFichiers, maj: Date.now() })); }
+  catch (e) { /* quota dépassé : l'arbre reste seulement en mémoire pour la session */ }
+  sauverCochesArbre();
+}
+function chargerArbreLocal() {
+  let rec = null; try { rec = JSON.parse(localStorage.getItem(K_ARBRE)); } catch (e) {}
+  if (!rec || !rec.racine) return;
+  _noeudsParId = new Map(); _idNoeud = 0;
+  const racine = _reconstruireNoeud(rec.racine);
+  let maxId = 0; _noeudsParId.forEach((_v, id) => { if (id > maxId) maxId = id; }); _idNoeud = maxId;
+  let coches = []; try { coches = JSON.parse(localStorage.getItem(K_ARBRE_COCHES)) || []; } catch (e) {}
+  _dossiersCoches = new Set(coches);
+  _arbreCourant = { racine, nbPhotos: rec.nbPhotos, nbFichiers: rec.nbFichiers, restaure: true };
+  const bv = document.getElementById("btn-voir-arbre"); if (bv) bv.disabled = false;
+  majBoutonImport();
+}
+// Ré-affiche la dernière arborescence analysée (conservée en session ou restaurée du navigateur).
 function afficherArbreCourant() {
   if (!_arbreCourant) { etatSync("Aucune arborescence — analyse d'abord un dossier.", "err"); return; }
   activerOnglet("import");
@@ -898,6 +929,7 @@ function cascadeCoche(cb, aDesEnfants) {
     if (det) det.querySelectorAll(".arbre-niveau input.cb-dossier").forEach(x => { x.checked = cb.checked; });
   }
   _dossiersCoches = new Set([...document.querySelectorAll(".cb-dossier:checked")].map(x => +x.getAttribute("data-id")));
+  sauverCochesArbre();
   majBoutonImport();
 }
 function majBoutonImport() {
@@ -916,7 +948,11 @@ async function importerDossiersCoches() {
     const node = _noeudsParId.get(id); if (!node) continue;
     for (const f of node.fichiers) { const k = f.name + ":" + f.size; if (!vus.has(k)) { vus.add(k); fichiers.push(f); } }
   }
-  if (!fichiers.length) { etatSync("Aucune photo dans les dossiers cochés.", "err"); return; }
+  if (!fichiers.length) {
+    if (_arbreCourant && _arbreCourant.restaure) etatSync("Ré-analyse le dossier pour créer les vignettes (accès aux fichiers fermé au rechargement).", "err");
+    else etatSync("Aucune photo dans les dossiers cochés.", "err");
+    return;
+  }
   await importerFichiers(fichiers);
 }
 
@@ -1698,6 +1734,7 @@ async function demarrer() {
   chargerDonneesLocales();
   restaurerOnglet();
   appliquerEtatAvances();
+  chargerArbreLocal();     // restaure l'arborescence du dernier scan (bouton « Voir l'arborescence »)
   demarrer();
 })();
 </script>
