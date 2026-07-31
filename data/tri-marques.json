@@ -8,7 +8,8 @@
     "local:2000_05_08_15_02_15.jpg:93281": "plus",
     "local:2000_05_08_15_01_05.jpg:90165": "moins",
     "local:2000_05_08_15_01_29.jpg:94541": "moins",
-    "local:2000_05_08_15_01_41.jpg:93615": "moins"
+    "local:2000_05_08_15_01_41.jpg:93615": "moins",
+    "local:IMG_0618.jpg:542456": "plus"
   },
   "textesAlbums": {},
   "supprimees": [
@@ -37,5 +38,5 @@
     "seriesEcart": 10,
     "toutVoir": false
   },
-  "maj": "2026-07-31T20:11:15.432Z"
+  "maj": "2026-07-31T20:11:18.998Z"
 }
