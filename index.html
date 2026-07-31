@@ -181,6 +181,16 @@
   .msg.err { color: var(--danger); } .msg.ok { color: #3a9f5f; }
 
   code.snip { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+
+  /* Zone de dépôt (glisser-déposer d'images) */
+  #drop-overlay { position: fixed; inset: 0; background: rgba(79,140,255,.14); border: 3px dashed var(--accent);
+    display: none; align-items: center; justify-content: center; z-index: 60; pointer-events: none; }
+  #drop-overlay.actif { display: flex; }
+  #drop-overlay .boite { background: var(--panel); border: 1px solid var(--accent); border-radius: 12px;
+    padding: 20px 28px; font-size: 16px; color: var(--text); }
+  .zone-depot { border: 2px dashed var(--border); border-radius: 8px; padding: 14px; text-align: center;
+    color: var(--text-dim); font-size: 12px; cursor: pointer; margin-top: 8px; }
+  .zone-depot:hover { border-color: var(--accent); color: var(--text); }
   pre.exemple { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 11px;
     overflow-x: auto; color: var(--text); line-height: 1.4; }
   .reglages label.bloc { display: block; font-size: 12px; color: var(--text-dim); margin: 12px 0 4px; }
@@ -230,7 +240,10 @@
         <label title="Texte propre à ce mois : remplace « non marqué » dans le nom de l'album correspondant à l'export.">📝 Texte d'album :
           <input type="text" id="texte-album" maxlength="40" placeholder="(aucun)" oninput="publierTexteAlbum()" style="width:220px;"></label>
         <button class="btn" onclick="basculerToutVoir()" id="btn-tout-voir">👁️ Tout déplier</button>
+        <button class="btn" onclick="document.getElementById('fichier-import').click()" title="Ajoute des images à la volée pour tester : elles deviennent des vignettes normales (marquage, filtres, séries…). Date de prise de vue lue dans l'EXIF si présente, sinon date du fichier. Session locale (non enregistrées dans le dépôt).">🖼️ Importer des images…</button>
+        <input type="file" id="fichier-import" accept="image/*" multiple style="display:none" onchange="importerFichiers(this.files); this.value='';">
       </div>
+      <div class="zone-depot" onclick="document.getElementById('fichier-import').click()">Glisse-dépose des images ici (ou clique) pour les ajouter comme vignettes de test.</div>
     </div>
 
     <!-- Onglet FILTRES -->
@@ -348,12 +361,15 @@
     <div class="separateur">🖼️ Vignettes</div>
 
     <!-- Contenu -->
-    <div id="contenu"><p style="font-size:12px;color:var(--text-dim);">Configure la source dans l'onglet ⚙️ Réglages, puis choisis un mois.</p></div>
+    <div id="contenu"><p style="font-size:12px;color:var(--text-dim);">Glisse-dépose des images dans la fenêtre (ou onglet Mois → « Importer ») pour commencer à tester tout de suite — ou configure une source dans l'onglet ⚙️ Réglages.</p></div>
   </div>
 </main>
 
+<!-- Surcouche de dépôt (glisser-déposer) -->
+<div id="drop-overlay"><div class="boite">Déposez vos images ici</div></div>
+
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.1</span>
+  <span class="version">version autonome 2026-07-30.2</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -387,7 +403,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.1";
+const VERSION = "2026-07-30.2";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -460,7 +476,7 @@ function baseImages() {
   return "";
 }
 function urlImage(v) {
-  if (/^https?:\/\//i.test(v.fichier) || v.fichier.startsWith("data:")) return v.fichier;
+  if (/^https?:\/\//i.test(v.fichier) || v.fichier.startsWith("data:") || v.fichier.startsWith("blob:")) return v.fichier;
   return baseImages() + v.fichier;
 }
 
@@ -541,6 +557,94 @@ function peuplerMois(annee, moisPref) {
 }
 
 function changerAnnee() { peuplerMois(document.getElementById("sel-annee").value, null); rafraichir(); }
+
+/* =========================================================================
+   IMPORT PAR GLISSER-DÉPOSER (vignettes de test, session locale)
+   Les images déposées deviennent des vignettes normales : elles sont
+   ajoutées au MANIFEST courant, avec la date de prise de vue lue dans
+   l'EXIF (JPEG) si présente, sinon la date de modification du fichier.
+   L'image est référencée par une URL objet (blob:) valable le temps de la
+   session — ces vignettes ne sont pas réécrites dans le dépôt.
+   ========================================================================= */
+function isoLocal(d) {
+  return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) +
+    "T" + pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
+}
+function _ascii(dv, off, n) { let s = ""; for (let k = 0; k < n; k++) { const c = dv.getUint8(off + k); if (!c) break; s += String.fromCharCode(c); } return s; }
+
+// Lit DateTimeOriginal (0x9003) ou DateTime (0x0132) dans l'EXIF d'un JPEG.
+async function lireDatePriseVue(file) {
+  try {
+    if (/jpe?g/i.test(file.type) || /\.jpe?g$/i.test(file.name)) {
+      const buf = await file.slice(0, 256 * 1024).arrayBuffer();
+      const dv = new DataView(buf);
+      if (dv.getUint16(0) === 0xFFD8) {
+        let off = 2;
+        while (off + 4 < dv.byteLength) {
+          const marker = dv.getUint16(off);
+          if ((marker & 0xFF00) !== 0xFF00) break;
+          const size = dv.getUint16(off + 2);
+          if (marker === 0xFFE1 && dv.getUint32(off + 4) === 0x45786966) { // "Exif"
+            const tiff = off + 10;
+            const le = dv.getUint16(tiff) === 0x4949;
+            const g16 = o => dv.getUint16(o, le), g32 = o => dv.getUint32(o, le);
+            const ifd0 = tiff + g32(tiff + 4);
+            let exifIfd = null, dt = null;
+            const n0 = g16(ifd0);
+            for (let i = 0; i < n0; i++) {
+              const e = ifd0 + 2 + i * 12, tag = g16(e);
+              if (tag === 0x8769) exifIfd = tiff + g32(e + 8);
+              else if (tag === 0x0132) dt = _ascii(dv, tiff + g32(e + 8), 19);
+            }
+            if (exifIfd) {
+              const ne = g16(exifIfd);
+              for (let i = 0; i < ne; i++) {
+                const e = exifIfd + 2 + i * 12, tag = g16(e);
+                if (tag === 0x9003) { dt = _ascii(dv, tiff + g32(e + 8), 19); break; }
+              }
+            }
+            if (dt && /^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}/.test(dt)) {
+              return dt.slice(0, 10).replace(/:/g, "-") + "T" + dt.slice(11, 19);
+            }
+            break;
+          }
+          off += 2 + size;
+        }
+      }
+    }
+  } catch (e) { /* EXIF illisible : on retombe sur la date du fichier */ }
+  return isoLocal(new Date(file.lastModified || Date.now()));
+}
+
+async function importerFichiers(fileList) {
+  const files = [...fileList].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|gif|webp|bmp|heic|heif)$/i.test(f.name));
+  if (!files.length) { etatSync("Aucune image reconnue dans le dépôt.", "err"); return; }
+  etatSync("Import de " + files.length + " image(s)…", "");
+  const parUuid = new Map(MANIFEST.map(v => [v.uuid, v]));
+  let dernier = null;
+  for (const f of files) {
+    const iso = await lireDatePriseVue(f);
+    const v = enrichirVignette({ uuid: "local:" + f.name + ":" + f.size, fichier: URL.createObjectURL(f), datetime: iso, personnes: [], score: null, scores_detail: {} });
+    if (v) { parUuid.set(v.uuid, v); if (!dernier || (v.datetime || "") > (dernier.datetime || "")) dernier = v; }
+  }
+  MANIFEST = [...parUuid.values()];
+  indexerParMois();
+  if (dernier && dernier.annee) {
+    const selA = document.getElementById("sel-annee");
+    selA.value = String(dernier.annee);
+    peuplerMois(String(dernier.annee), dernier.mois);
+  }
+  activerOnglet("mois");
+  rafraichir();
+  etatSync(files.length + " image(s) importée(s) — session locale", "ok");
+}
+
+// Glisser-déposer sur toute la fenêtre.
+let _dragCompteur = 0;
+window.addEventListener("dragenter", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { e.preventDefault(); _dragCompteur++; document.getElementById("drop-overlay").classList.add("actif"); } });
+window.addEventListener("dragover", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) e.preventDefault(); });
+window.addEventListener("dragleave", e => { e.preventDefault(); _dragCompteur = Math.max(0, _dragCompteur - 1); if (!_dragCompteur) document.getElementById("drop-overlay").classList.remove("actif"); });
+window.addEventListener("drop", e => { e.preventDefault(); _dragCompteur = 0; document.getElementById("drop-overlay").classList.remove("actif"); const f = e.dataTransfer && e.dataTransfer.files; if (f && f.length) importerFichiers(f); });
 
 /* =========================================================================
    PERSISTANCE (GitHub Contents API + repli localStorage)
