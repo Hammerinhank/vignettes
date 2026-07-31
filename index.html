@@ -181,23 +181,48 @@
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: none;
     align-items: center; justify-content: center; z-index: 50; padding: 20px; }
   .overlay.ouvert { display: flex; }
-  #overlay-zoom { flex-direction: column; }
-  .zoom-corps { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 98vw; max-height: 94vh; }
-  #zoom-img { max-width: 96vw; max-height: 64vh; object-fit: contain; border-radius: 6px; border: 4px solid transparent; background: #000; cursor: zoom-out; }
-  #zoom-img.plein { max-height: 88vh; max-width: 98vw; }
-  .zoom-barre { display: flex; flex-direction: column; gap: 8px; align-items: center; width: 100%; }
-  .zoom-ligne { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-  .zoom-ligne button { background: var(--panel); color: var(--text); border: 1px solid var(--border);
-    border-radius: 8px; padding: 9px 14px; font-size: 13px; font-family: inherit; cursor: pointer; }
-  .zoom-ligne button:hover { background: var(--panel-hover); }
-  .zoom-ligne button.on-moins { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .zoom-ligne button.on-plus { background: var(--vert); border-color: var(--vert); color: #08331d; }
-  .zoom-ligne.petite button { font-size: 12px; padding: 7px 11px; color: var(--text-dim); }
-  .zoom-fermer { position: fixed; top: 14px; right: 18px; font-size: 26px; color: #fff; background: none; border: none; cursor: pointer; z-index: 2; }
-  .zoom-plein { position: fixed; top: 14px; left: 18px; font-size: 20px; color: #fff; background: rgba(0,0,0,.35);
-    border: none; cursor: pointer; z-index: 2; border-radius: 6px; padding: 2px 9px; }
+  /* Zoom : colonne de boutons à GAUCHE, image, colonne à DROITE — chaque
+     colonne Marquer + / navigation (◀ ou ▶) / Marquer − ; Marquer + au-dessus
+     et Marquer − en dessous de l'image. Disposition reprise à l'identique de
+     l'application d'origine. */
+  #overlay-zoom.ouvert { flex-direction: column; gap: 12px; }
+  #zoom-rangee { display: flex; align-items: center; justify-content: center; gap: 12px; max-width: 98vw; }
+  #zoom-rangee img { max-width: calc(98vw - 220px); max-height: 72vh; border-radius: 8px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.6); cursor: zoom-out; background: #000; border: 4px solid transparent; }
+  .zoom-cote { display: flex; flex-direction: column; gap: 22px; flex: 0 0 auto; }
+  .zoom-cote button { font-size: 14px; padding: 10px 12px; border: 1px solid #b0b6bf; border-radius: 6px;
+    background: var(--bg); color: var(--text-dim); cursor: pointer; white-space: nowrap; font-family: inherit; }
+  .zoom-cote button:hover { background: var(--panel-hover); }
+  #zoom-centre { display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 0; }
+  #zoom-haut, #zoom-bas { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; width: 0; min-width: 100%; }
+  #zoom-haut button, #zoom-bas button { font-size: 15px; padding: 10px 20px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--bg); color: var(--text-dim); cursor: pointer; white-space: nowrap; font-family: inherit; }
+  .zoom-cote button.on-plus, #zoom-haut button.on-plus { background: var(--vert); border-color: var(--vert); color: #08331d; }
+  .zoom-cote button.on-moins, #zoom-bas button.on-moins { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .zoom-fermer { position: fixed; top: 14px; right: 18px; font-size: 26px; color: #fff; background: none; border: none; cursor: pointer; z-index: 5; }
   .zoom-info { color: #fff; font-size: 13px; text-align: center; }
-  @media (max-width: 560px) { .zoom-ligne button { padding: 8px 10px; font-size: 12px; } #zoom-img { max-height: 52vh; } }
+  #zoom-plein { display: flex; align-items: center; justify-content: center; width: 46px; height: 46px; font-size: 22px;
+    background: rgba(13,15,20,.55); border: 1px solid #b0b6bf; border-radius: 8px; color: var(--text-dim); cursor: pointer; padding: 0; }
+  /* iMac (souris) : boutons latéraux étendus vers l'extérieur, image et rangée inchangées. */
+  @media (hover: hover) and (pointer: fine) {
+    #zoom-gauche { align-items: flex-end; } #zoom-droite { align-items: flex-start; }
+    .zoom-cote button { width: 300%; }
+  }
+  /* Tactile : cibles latérales bien espacées verticalement. */
+  @media (pointer: coarse) { .zoom-cote { gap: 8vh; } }
+  /* Petits écrans : on réduit l'espace réservé aux colonnes et la taille des boutons. */
+  @media (max-width: 560px) {
+    #zoom-rangee img { max-width: calc(100vw - 132px); max-height: 60vh; }
+    .zoom-cote button { font-size: 11px; padding: 8px 6px; }
+    #zoom-haut button, #zoom-bas button { font-size: 13px; padding: 8px 12px; }
+  }
+  /* Plein cadre (bouton ⤢) : image maximale, boutons superposés semi-transparents. */
+  #overlay-zoom.plein #zoom-rangee { position: relative; max-width: 100vw; gap: 0; }
+  #overlay-zoom.plein #zoom-rangee img { max-width: 100vw; max-height: 94vh; }
+  #overlay-zoom.plein .zoom-cote { position: absolute; top: 50%; transform: translateY(-50%); z-index: 3; opacity: .65; }
+  #overlay-zoom.plein #zoom-gauche { left: 6px; } #overlay-zoom.plein #zoom-droite { right: 6px; }
+  #overlay-zoom.plein #zoom-haut, #overlay-zoom.plein #zoom-bas { position: absolute; left: 50%; transform: translateX(-50%); width: auto; min-width: 0; z-index: 3; opacity: .65; }
+  #overlay-zoom.plein #zoom-haut { top: 6px; } #overlay-zoom.plein #zoom-bas { bottom: 6px; }
   .boite-meta { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
     max-width: 460px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 18px 20px; }
   .boite-meta h3 { margin: 0 0 10px; font-size: 15px; }
@@ -401,33 +426,34 @@
 <div id="drop-overlay"><div class="boite">Déposez vos images ici</div></div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.8</span>
+  <span class="version">version autonome 2026-07-30.9</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
 
-<!-- Overlay zoom -->
+<!-- Overlay zoom : reprend la disposition d'origine (colonnes latérales
+     Marquer +/nav/Marquer −, Marquer + au-dessus et Marquer − sous l'image). -->
 <div class="overlay" id="overlay-zoom">
   <button class="zoom-fermer" onclick="fermerZoom()" title="Fermer (Échap)">✕</button>
-  <button class="zoom-plein" onclick="basculerPleinZoom()" title="Plein cadre">⤢</button>
-  <div class="zoom-corps">
-    <img id="zoom-img" alt="" onclick="fermerZoom()">
-    <div class="zoom-barre">
-      <div class="zoom-ligne">
-        <button onclick="navZoom(-1)" title="Précédente (flèche ←)">‹ Précédent</button>
-        <button id="zb-moins" onclick="marquerDansZoom('moins')" title="Basculer la marque − (flèche ↓)">☐ Marquer −</button>
-        <button id="zb-plus" onclick="marquerDansZoom('plus')" title="Basculer la marque + (flèche ↑)">☐ Marquer +</button>
-        <button onclick="navZoom(1)" title="Suivante (flèche →)">Suivant ›</button>
-      </div>
-      <div class="zoom-ligne petite">
-        <button id="zb-moins-prev" onclick="marquerEtNaviguer('moins',-1)" title="Marquer − puis image précédente">− puis ‹</button>
-        <button id="zb-moins-next" onclick="marquerEtNaviguer('moins',1)" title="Marquer − puis image suivante (touche Suppr / ⌫)">− puis ›</button>
-        <button id="zb-plus-prev" onclick="marquerEtNaviguer('plus',-1)" title="Marquer + puis image précédente">+ puis ‹</button>
-        <button id="zb-plus-next" onclick="marquerEtNaviguer('plus',1)" title="Marquer + puis image suivante">+ puis ›</button>
-      </div>
-      <div class="zoom-info" id="zoom-info"></div>
+  <div id="zoom-rangee">
+    <div class="zoom-cote" id="zoom-gauche">
+      <button id="zg-plus" onclick="marquerEtNaviguer('plus',-1)" title="Marquer + puis image précédente">☐ Marquer +</button>
+      <button onclick="navZoom(-1)" title="Image précédente (flèche ←)">◀</button>
+      <button id="zg-moins" onclick="marquerEtNaviguer('moins',-1)" title="Marquer − puis image précédente">☐ Marquer −</button>
+    </div>
+    <div id="zoom-centre">
+      <div id="zoom-haut"><button id="zb-plus" onclick="marquerDansZoom('plus')" title="Basculer la marque + (flèche ↑)">☐ Marquer +</button></div>
+      <img id="zoom-img" alt="" onclick="fermerZoom()">
+      <div id="zoom-bas"><button id="zb-moins" onclick="marquerDansZoom('moins')" title="Basculer la marque − (flèche ↓)">☐ Marquer −</button></div>
+    </div>
+    <div class="zoom-cote" id="zoom-droite">
+      <button id="zd-plus" onclick="marquerEtNaviguer('plus',1)" title="Marquer + puis image suivante">☐ Marquer +</button>
+      <button onclick="navZoom(1)" title="Image suivante (flèche →)">▶</button>
+      <button id="zd-moins" onclick="marquerEtNaviguer('moins',1)" title="Marquer − puis image suivante (touche Suppr / ⌫)">☐ Marquer −</button>
     </div>
   </div>
+  <div class="zoom-info" id="zoom-info"></div>
+  <button id="zoom-plein" onclick="basculerPleinZoom()" title="Plein cadre">⤢</button>
 </div>
 
 <!-- Overlay métadonnées -->
@@ -450,7 +476,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.8";
+const VERSION = "2026-07-30.9";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -1417,15 +1443,16 @@ function majControlesZoom() {
   const img = document.getElementById("zoom-img"); img.src = urlImage(v);
   const mk = DATA.marques[uuid] || null;
   img.style.borderColor = mk === "plus" ? "var(--vert)" : mk === "moins" ? "var(--accent)" : "transparent";
-  const bM = document.getElementById("zb-moins"), bP = document.getElementById("zb-plus");
-  bM.textContent = mk === "moins" ? "✓ Marquée −" : "☐ Marquer −"; bM.className = mk === "moins" ? "on-moins" : "";
+  // Boutons centraux (au-dessus / en dessous) : bascule, reflètent l'état.
+  const bP = document.getElementById("zb-plus"), bM = document.getElementById("zb-moins");
   bP.textContent = mk === "plus" ? "✓ Marquée +" : "☐ Marquer +"; bP.className = mk === "plus" ? "on-plus" : "";
-  // Boutons « marquer puis naviguer » : celui qui correspond à la marque
-  // déjà posée est masqué, pour que ce chemin ne puisse jamais démarquer.
-  document.getElementById("zb-moins-prev").style.visibility = mk === "moins" ? "hidden" : "visible";
-  document.getElementById("zb-moins-next").style.visibility = mk === "moins" ? "hidden" : "visible";
-  document.getElementById("zb-plus-prev").style.visibility = mk === "plus" ? "hidden" : "visible";
-  document.getElementById("zb-plus-next").style.visibility = mk === "plus" ? "hidden" : "visible";
+  bM.textContent = mk === "moins" ? "✓ Marquée −" : "☐ Marquer −"; bM.className = mk === "moins" ? "on-moins" : "";
+  // Boutons latéraux « marquer puis naviguer » : celui correspondant à la
+  // marque déjà posée est masqué (visibility), pour ne jamais démarquer par ce chemin.
+  document.getElementById("zg-plus").style.visibility = mk === "plus" ? "hidden" : "visible";
+  document.getElementById("zd-plus").style.visibility = mk === "plus" ? "hidden" : "visible";
+  document.getElementById("zg-moins").style.visibility = mk === "moins" ? "hidden" : "visible";
+  document.getElementById("zd-moins").style.visibility = mk === "moins" ? "hidden" : "visible";
   const etq = mk === "plus" ? " · marquée +" : mk === "moins" ? " · marquée −" : "";
   document.getElementById("zoom-info").textContent = `${v.heure || ""}${etq}  (${zoomIndex + 1}/${zoomListe.length})`;
 }
@@ -1436,8 +1463,12 @@ function marquerEtNaviguer(type, delta) {
   if ((DATA.marques[uuid] || null) !== type) poserMarque(uuid, type); // pose/remplace, jamais retire
   finaliserMarquage(); navZoom(delta);
 }
-function basculerPleinZoom() { zoomPlein = !zoomPlein; document.getElementById("zoom-img").classList.toggle("plein", zoomPlein); }
-function fermerZoom() { document.getElementById("overlay-zoom").classList.remove("ouvert"); }
+function basculerPleinZoom() {
+  zoomPlein = !zoomPlein;
+  document.getElementById("overlay-zoom").classList.toggle("plein", zoomPlein);
+  document.getElementById("zoom-plein").textContent = zoomPlein ? "⤡" : "⤢";
+}
+function fermerZoom() { const o = document.getElementById("overlay-zoom"); o.classList.remove("ouvert"); o.classList.remove("plein"); zoomPlein = false; document.getElementById("zoom-plein").textContent = "⤢"; }
 
 function afficherMetadonnees(uuid) {
   const v = vignetteParUuid(uuid); if (!v) return;
