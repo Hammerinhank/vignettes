@@ -254,7 +254,7 @@
           <input type="text" id="texte-album" maxlength="40" placeholder="(aucun)" oninput="publierTexteAlbum()" style="width:220px;"></label>
         <button class="btn" onclick="basculerToutVoir()" id="btn-tout-voir">👁️ Tout déplier</button>
         <button class="btn" onclick="basculerToutesPhotos()" id="btn-tout-photos" title="Affiche toutes les photos, toutes années et tous mois confondus, par tranches de 100 (avec un bouton pour charger les suivantes). Les filtres restent actifs.">🌐 Voir toutes les photos</button>
-        <button class="btn" onclick="document.getElementById('fichier-import').click()" title="Ajoute des images à la volée pour tester : elles deviennent des vignettes normales (marquage, filtres, séries…). Date de prise de vue lue dans l'EXIF si présente, sinon date du fichier. Session locale (non enregistrées dans le dépôt).">🖼️ Importer des images…</button>
+        <button class="btn" onclick="document.getElementById('fichier-import').click()" title="Ajoute des images comme vignettes normales (marquage, filtres, séries…). Date de prise de vue lue dans l'EXIF si présente, sinon date du fichier. Conservées dans ce navigateur (elles réapparaissent après un rechargement) ; effaçables depuis l'onglet ⚙️ Réglages.">🖼️ Importer des images…</button>
         <input type="file" id="fichier-import" accept="image/*" multiple style="display:none" onchange="importerFichiers(this.files); this.value='';">
       </div>
       <div class="zone-depot" onclick="document.getElementById('fichier-import').click()">Glisse-dépose des images ici (ou clique) pour les ajouter comme vignettes de test.</div>
@@ -343,6 +343,7 @@
         <button class="btn" onclick="testerAcces()">🔌 Tester l'accès</button>
         <button class="btn" onclick="chargerDonneesDepuisGithub(true)">⤓ Recharger les marques du dépôt</button>
         <button class="btn" onclick="effacerToken()">🗑️ Oublier le jeton</button>
+        <button class="btn" onclick="effacerVignettesImportees()">🗑️ Effacer les vignettes importées</button>
       </div>
       <div id="msg-reglages" class="msg"></div>
       <p class="aide">Le jeton reste dans le <code class="snip">localStorage</code> de ce navigateur uniquement — il n'est jamais publié ni transmis ailleurs qu'à l'API GitHub. Sans jeton, l'application fonctionne en lecture seule et mémorise tes marques localement (elles ne seront pas synchronisées entre appareils).</p>
@@ -383,7 +384,7 @@
 <div id="drop-overlay"><div class="boite">Déposez vos images ici</div></div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.4</span>
+  <span class="version">version autonome 2026-07-30.5</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -432,7 +433,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.4";
+const VERSION = "2026-07-30.5";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -520,8 +521,12 @@ async function chargerManifeste() {
     const j = await res.json();
     if (CONFIG.images === "" && j.images_base) CONFIG.images = j.images_base;
     const brut = Array.isArray(j) ? j : (j.vignettes || []);
-    MANIFEST = brut.map(enrichirVignette).filter(v => v);
-    indexerParMois();
+    const distant = brut.map(enrichirVignette).filter(v => v);
+    // On conserve les vignettes importées localement (uuid « local: ») déjà
+    // chargées, et on y ajoute/écrase celles du manifeste.
+    const parUuid = new Map(MANIFEST.filter(v => v._local).map(v => [v.uuid, v]));
+    for (const v of distant) parUuid.set(v.uuid, v);
+    MANIFEST = [...parUuid.values()];
     return true;
   } catch (e) {
     document.getElementById("contenu").innerHTML = `<p class="msg err">Impossible de lire le manifeste : ${esc(e.message)}.</p>`;
@@ -550,7 +555,7 @@ function enrichirVignette(x) {
     uuid, fichier: x.fichier, datetime: x.datetime || null,
     annee, mois, jour, heure, secondes: heureEnSecondes(heure),
     personnes, score: aScore ? x.score : null, scores_detail: scoresDetail,
-    hd: !!x.hd, icloud: !!x.icloud, meta
+    hd: !!x.hd, icloud: !!x.icloud, meta, _local: !!x._local
   };
 }
 
@@ -653,7 +658,9 @@ async function importerFichiers(fileList) {
   let dernier = null;
   for (const f of files) {
     const iso = await lireDatePriseVue(f);
-    const v = enrichirVignette({ uuid: "local:" + f.name + ":" + f.size, fichier: URL.createObjectURL(f), datetime: iso, personnes: [], score: null, scores_detail: {} });
+    const uuid = "local:" + f.name + ":" + f.size;
+    try { await sauverImportee({ uuid, nom: f.name, taille: f.size, datetime: iso, blob: f, personnes: [], score: null, scores_detail: {} }); } catch (e) {}
+    const v = enrichirVignette({ uuid, fichier: URL.createObjectURL(f), datetime: iso, personnes: [], score: null, scores_detail: {}, _local: true });
     if (v) { parUuid.set(v.uuid, v); if (!dernier || (v.datetime || "") > (dernier.datetime || "")) dernier = v; }
   }
   MANIFEST = [...parUuid.values()];
@@ -665,7 +672,7 @@ async function importerFichiers(fileList) {
   }
   activerOnglet("mois");
   rafraichir();
-  etatSync(files.length + " image(s) importée(s) — session locale", "ok");
+  etatSync(files.length + " image(s) importée(s) — conservées dans ce navigateur", "ok");
 }
 
 // Glisser-déposer sur toute la fenêtre.
@@ -674,6 +681,49 @@ window.addEventListener("dragenter", e => { if (e.dataTransfer && [...e.dataTran
 window.addEventListener("dragover", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) e.preventDefault(); });
 window.addEventListener("dragleave", e => { e.preventDefault(); _dragCompteur = Math.max(0, _dragCompteur - 1); if (!_dragCompteur) document.getElementById("drop-overlay").classList.remove("actif"); });
 window.addEventListener("drop", e => { e.preventDefault(); _dragCompteur = 0; document.getElementById("drop-overlay").classList.remove("actif"); const f = e.dataTransfer && e.dataTransfer.files; if (f && f.length) importerFichiers(f); });
+
+/* ---- Persistance des images importées (IndexedDB, survit au rechargement) ----
+   Les URL objet (blob:) créées à l'import ne survivent pas à un rafraîchissement.
+   On garde donc le FICHIER lui-même dans IndexedDB (grande capacité, propre à
+   ce navigateur) et on recrée l'URL objet au chargement de la page. */
+let _db = null;
+function ouvrirDB() {
+  return new Promise((res, rej) => {
+    if (_db) return res(_db);
+    if (!("indexedDB" in window)) return rej(new Error("IndexedDB indisponible"));
+    const req = indexedDB.open("tvsa", 1);
+    req.onupgradeneeded = e => { const db = e.target.result; if (!db.objectStoreNames.contains("importees")) db.createObjectStore("importees", { keyPath: "uuid" }); };
+    req.onsuccess = e => { _db = e.target.result; res(_db); };
+    req.onerror = () => rej(req.error);
+  });
+}
+async function sauverImportee(rec) { const db = await ouvrirDB(); return new Promise((res, rej) => { const tx = db.transaction("importees", "readwrite"); tx.objectStore("importees").put(rec); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+async function lireImportees() { const db = await ouvrirDB(); return new Promise((res, rej) => { const tx = db.transaction("importees", "readonly"); const r = tx.objectStore("importees").getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error); }); }
+async function viderImportees() { const db = await ouvrirDB(); return new Promise((res, rej) => { const tx = db.transaction("importees", "readwrite"); tx.objectStore("importees").clear(); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+
+// Recharge les vignettes importées depuis IndexedDB et les fusionne au MANIFEST.
+async function chargerVignettesImportees() {
+  let recs = [];
+  try { recs = await lireImportees(); } catch (e) { return 0; }
+  if (!recs.length) return 0;
+  const parUuid = new Map(MANIFEST.map(v => [v.uuid, v]));
+  for (const r of recs) {
+    let url; try { url = URL.createObjectURL(r.blob); } catch (e) { continue; }
+    const v = enrichirVignette({ uuid: r.uuid, fichier: url, datetime: r.datetime, personnes: r.personnes || [], score: (typeof r.score === "number" ? r.score : null), scores_detail: r.scores_detail || {}, _local: true });
+    if (v) parUuid.set(v.uuid, v);
+  }
+  MANIFEST = [...parUuid.values()];
+  return recs.length;
+}
+
+async function effacerVignettesImportees() {
+  if (!confirm("Effacer toutes les vignettes importées de ce navigateur ? (les images d'un manifeste ne sont pas touchées ; les marques restent enregistrées)")) return;
+  try { await viderImportees(); } catch (e) {}
+  MANIFEST = MANIFEST.filter(v => !v._local);
+  indexerParMois();
+  if (modeTout) rafraichirTout(); else rafraichir();
+  msgReglages("Vignettes importées effacées.", "ok");
+}
 
 /* =========================================================================
    PERSISTANCE (GitHub Contents API + repli localStorage)
@@ -1262,10 +1312,20 @@ function restaurerOnglet() { let o = "mois"; try { o = localStorage.getItem(K_ON
    ========================================================================= */
 async function demarrer() {
   majEtatSync();
-  const ok = await chargerManifeste();
-  if (!CONFIG.manifest) { activerOnglet("reglages"); return; }
+  const nbImportees = await chargerVignettesImportees();
+  if (CONFIG.manifest) await chargerManifeste();
+  // Ni manifeste, ni images importées : on guide vers les réglages.
+  if (!CONFIG.manifest && MANIFEST.length === 0) {
+    activerOnglet("reglages");
+    document.getElementById("contenu").innerHTML = `<p style="font-size:12px;color:var(--text-dim);">Glisse-dépose des images dans la fenêtre pour commencer, ou configure une source dans l'onglet ⚙️ Réglages.</p>`;
+    return;
+  }
+  indexerParMois();
   await chargerDonneesDepuisGithub(false);
-  if (ok) { restaurerChampsDepuisEtat(); peuplerSelecteurs(); rafraichir(); }
+  restaurerChampsDepuisEtat();
+  peuplerSelecteurs();
+  rafraichir();
+  if (nbImportees) etatSync(nbImportees + " vignette(s) importée(s) restaurée(s)", "ok");
 }
 
 (function init() {
