@@ -153,6 +153,14 @@
   .arbre .feuille { padding: 3px 6px; color: var(--text); }
   .arbre-niveau { margin-left: 12px; border-left: 1px solid var(--border); padding-left: 8px; }
   .arbre .cb-dossier { width: auto; margin: 0 4px 0 0; vertical-align: middle; cursor: pointer; }
+  /* Bloc « analyse en cours » : affiché tout de suite, bien visible. */
+  .analyse-encours { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 44px 16px; text-align: center; color: var(--text); }
+  .analyse-encours .spin { width: 34px; height: 34px; border: 3px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: tourner .8s linear infinite; }
+  @keyframes tourner { to { transform: rotate(360deg); } }
+  .analyse-encours .grand { font-size: 16px; font-weight: 700; }
+  .analyse-encours .petit { font-size: 13px; color: var(--text-dim); }
   .carte { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 2px; position: relative; }
   .carte.plus { border: 3px solid var(--vert); }
   .carte.moins { border: 3px solid var(--accent); }
@@ -437,7 +445,7 @@
 <div id="drop-overlay"><div class="boite">Déposez vos images ici</div></div>
 
 <footer id="pied">
-  <span class="version">version autonome 2026-07-30.10</span>
+  <span class="version">version autonome 2026-07-30.11</span>
   <button class="btn" onclick="revenirEnHaut()" style="border:1px solid #fff;">↩ Revenir</button>
   <button class="btn" onclick="basculerAgrandissement()" id="btn-agrandir">⛶ Agrandir</button>
 </footer>
@@ -487,7 +495,7 @@
      l'API GitHub (jeton stocké en localStorage), avec repli localStorage.
    ========================================================================= */
 
-const VERSION = "2026-07-30.10";
+const VERSION = "2026-07-30.11";
 const CRITERES = ["score", "nettete_sujet", "composition", "lumiere", "cadrage", "echec"];
 
 // ---- Clés localStorage ----
@@ -752,12 +760,22 @@ const RE_PHOTO = /\.(jpe?g|png|gif|webp|bmp|tiff?|heic|heif|avif|cr2|cr3|nef|arw
 let _noeudsParId = new Map(), _idNoeud = 0;
 function _nouveauNoeud(nom) { const id = ++_idNoeud; const n = { id, nom, enfants: new Map(), fichiers: [], nbDirect: 0, nbTotal: 0 }; _noeudsParId.set(id, n); return n; }
 async function analyserDossier(fileList) {
-  const files = [...fileList];
-  if (!files.length) return;
-  const N = files.length;
   activerOnglet("import");
-  etatSync("Analyse du dossier…", "");
-  progression(true, `Analyse du dossier : 0 / ${N.toLocaleString("fr-FR")} fichiers`, 0);
+  etatSync("Analyse du dossier en cours…", "");
+  // Retour visuel IMMÉDIAT, avant tout traitement lourd : sur un gros
+  // dossier, l'extraction de la liste des fichiers (ci-dessous) peut à elle
+  // seule prendre du temps, et sans ceci l'écran semblait ne rien faire.
+  const c = document.getElementById("contenu");
+  c.innerHTML = `<div class="analyse-encours"><div class="spin"></div><div class="grand">Analyse du dossier en cours…</div><div class="petit" id="analyse-txt">Lecture de la liste des fichiers…</div></div>`;
+  c.scrollTop = 0;
+  progression(true, "Analyse du dossier en cours…", null);
+  await pause();                     // laisse le navigateur PEINDRE avant le gros travail
+  const maj = (t) => { const e = document.getElementById("analyse-txt"); if (e) e.textContent = t; };
+  const files = [...fileList];
+  if (!files.length) { progression(false); revenirAuxVignettes(); return; }
+  const N = files.length;
+  maj(`0 / ${N.toLocaleString("fr-FR")} fichiers`);
+  progression(true, `Analyse : 0 / ${N.toLocaleString("fr-FR")} fichiers`, 0);
   await pause();
   _noeudsParId = new Map(); _idNoeud = 0;
   const racineNom = (files[0].webkitRelativePath || files[0].name).split("/")[0] || "Dossier";
@@ -776,8 +794,12 @@ async function analyserDossier(fileList) {
       if (estPhoto) node.nbTotal++;
     }
     if (estPhoto) { node.nbDirect++; node.fichiers.push(f); }
-    if ((i & 4095) === 0) { progression(true, `Analyse : ${i.toLocaleString("fr-FR")} / ${N.toLocaleString("fr-FR")} fichiers — ${nbPhotos.toLocaleString("fr-FR")} photo(s)`, i / N); await pause(); }
+    if ((i & 4095) === 0) {
+      const t = `${i.toLocaleString("fr-FR")} / ${N.toLocaleString("fr-FR")} fichiers — ${nbPhotos.toLocaleString("fr-FR")} photo(s)`;
+      maj(t); progression(true, "Analyse : " + t, i / N); await pause();
+    }
   }
+  maj("Construction de l'arborescence…");
   progression(true, "Construction de l'arborescence…", null);
   await pause();
   afficherArbre(racine, nbPhotos, N);
