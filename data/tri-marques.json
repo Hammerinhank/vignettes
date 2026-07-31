@@ -13,7 +13,9 @@
     "local:IMG_8583.HEIC:1107440": "moins"
   },
   "textesAlbums": {},
-  "supprimees": [],
+  "supprimees": [
+    "local:1980_01_01_00_00_14.JPG:2890831"
+  ],
   "etat": {
     "annee": 2026,
     "mois": 5,
@@ -29,5 +31,5 @@
     "seriesEcart": 10,
     "toutVoir": false
   },
-  "maj": "2026-07-31T19:55:48.176Z"
+  "maj": "2026-07-31T19:56:20.819Z"
 }
