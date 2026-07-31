@@ -21,9 +21,9 @@
     "critere2": "",
     "min2": "",
     "max2": "",
-    "seriesActif": false,
+    "seriesActif": true,
     "seriesEcart": 10,
     "toutVoir": false
   },
-  "maj": "2026-07-31T12:54:04.680Z"
+  "maj": "2026-07-31T12:54:06.875Z"
 }
