@@ -15,7 +15,8 @@
   "textesAlbums": {},
   "supprimees": [
     "local:1980_01_01_00_00_14.JPG:2890831",
-    "local:small.jpg:631"
+    "local:small.jpg:631",
+    "local:IMG_8878.jpg:33038"
   ],
   "etat": {
     "annee": 2026,
@@ -32,5 +33,5 @@
     "seriesEcart": 10,
     "toutVoir": false
   },
-  "maj": "2026-07-31T19:56:30.440Z"
+  "maj": "2026-07-31T19:57:24.597Z"
 }
